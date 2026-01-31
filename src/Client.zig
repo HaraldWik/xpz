@@ -7,16 +7,15 @@ pub const default_display_path = "/tmp/.X11-unix/X0";
 reader: *std.Io.Reader,
 writer: *std.Io.Writer,
 
-endianness: std.builtin.Endian,
+endian: std.builtin.Endian,
 
 // setup reply
-server_info: protocol.setup.ServerInfo,
-capabilities: protocol.setup.Capabilities,
+setup: protocol.Setup,
 
 root_screen: Screen,
 
 pub const Options = struct {
-    endianness: std.builtin.Endian = .native,
+    endian: std.builtin.Endian = .native,
     protocol_major: u16 = 11,
     protocol_minor: u16 = 0,
     auth: Auth,
@@ -32,7 +31,7 @@ pub fn init(io: std.Io, reader: *std.Io.Reader, writer: *std.Io.Writer, options:
     };
 
     const connect: protocol.Setup.Request = .{
-        .byte_order = switch (options.endianness) {
+        .byte_order = switch (options.endian) {
             .big => 'B',
             .little => 'l',
         },
@@ -50,46 +49,48 @@ pub fn init(io: std.Io, reader: *std.Io.Reader, writer: *std.Io.Writer, options:
     try writer.flush();
 
     // Read setup
-    try reader.fill(8);
-    const status = try reader.takeInt(u8, options.endianness);
+    try reader.fillMore();
+
+    const status = try reader.peekInt(u8, options.endian);
     if (status != 1) {
-        const reason_len = try reader.takeInt(u8, options.endianness);
+        const reason_len = try reader.takeInt(u8, options.endian);
         const reason = try reader.take(reason_len);
         std.log.err(" {s}", .{reason[1..]});
         return error.SetupReply;
     }
-    _ = try reader.takeByte(); // Ignore reason_len
-    const major_version = try reader.takeInt(u16, options.endianness);
-    const minor_version = try reader.takeInt(u16, options.endianness);
-    const len = try reader.takeInt(u16, options.endianness);
-    _ = len;
-    if (major_version < connect.protocol_major or minor_version < connect.protocol_minor) return error.ServerUnsupportedProtocolVersion;
 
-    try reader.fillMore();
+    const setup = try reader.takeStruct(protocol.Setup, options.endian);
+    // const vendor = try reader.peek(setup.vendor_len + 3);
+    // std.debug.print("vendor: {s}\n", .{vendor});
 
-    const server_info = try reader.takeStruct(protocol.setup.ServerInfo, options.endianness);
-    const capabilities = try reader.takeStruct(protocol.setup.Capabilities, options.endianness);
-    const vendor = try reader.take(server_info.vendor_len + 3);
-    std.debug.print("vendor: {s}\n", .{vendor});
-    reader.end += (4 - (reader.end % 4)) % 4; // Padding
-
-    const formats_len = 8 * capabilities.pixmap_format_count;
-    const screens_offset = server_info.vendor_len + formats_len;
-    // reader.toss(screens_offset);
-    // reader.seek += screens_offset;
-    _ = screens_offset;
-    const root_screen = try reader.takeStruct(Screen, options.endianness);
-
-    std.debug.print("client init success\n", .{});
+    const vendor_pad = (4 - (setup.vendor_len % 4)) % 4;
+    const formats_len = 8 * setup.pixmap_formats_len;
+    const screens_offset = setup.vendor_len + vendor_pad + formats_len;
+    reader.toss(screens_offset);
+    const root_screen = try reader.takeStruct(Screen, options.endian);
 
     return .{
         .reader = reader,
         .writer = writer,
-        .endianness = options.endianness,
-        .server_info = server_info,
-        .capabilities = capabilities,
+        .endian = options.endian,
+        .setup = setup,
         .root_screen = root_screen,
     };
+}
+
+pub fn generateId(self: @This(), comptime T: type, resource_index: u32) T {
+    const id = self.setup.resource_id_base | (resource_index & self.setup.resource_id_mask);
+    switch (@typeInfo(T)) {
+        .@"enum" => |e| {
+            if (e.tag_type != u32) @compileError("expected enum with tag type of u32 found '" ++ @typeName(e.tag_type) ++ "'");
+            return @enumFromInt(id);
+        },
+        .int => |i| {
+            if (i.signedness == .signed or i.bits != 32) @compileError("expected u32 found '" ++ @typeName(T) ++ "'");
+            return id;
+        },
+        else => @compileError("invalid type given to nextId"),
+    }
 }
 
 /// "xhost +local:" removes the need to authenticate
@@ -129,14 +130,17 @@ pub const Auth = union(enum) {
                 const data_len = try reader.takeInt(u16, .big);
                 const data = try reader.take(data_len);
 
-                std.debug.print(
-                    \\family: {d}
-                    \\  address: {s}
-                    \\  display: {any}
-                    \\  name:    {s}
-                    \\  data:    {any}
-                    \\
-                , .{ family, address, display, name, data });
+                // std.debug.print(
+                //     \\family: {d}
+                //     \\  address: {s}
+                //     \\  display: {any}
+                //     \\  name:    {s}
+                //     \\  data:    {any}
+                //     \\
+                // , .{ family, address, display, name, data });
+                _ = family;
+                _ = address;
+                _ = display;
 
                 if (std.mem.eql(u8, name, protocol_name)) return data;
 
