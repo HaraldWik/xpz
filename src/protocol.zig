@@ -1,6 +1,8 @@
 const Atom = @import("atom.zig").Atom;
 const Window = @import("root.zig").Window;
 const VisualId = @import("root.zig").VisualId;
+const GContext = @import("root.zig").GContext;
+const Drawable = @import("root.zig").Drawable;
 
 pub const RequestHeader = extern struct {
     pub const Opcode = enum(u8) {
@@ -133,7 +135,7 @@ pub const RequestHeader = extern struct {
 
 pub const ReplyHeader = extern struct {
     response_type: ResponseType,
-    detail: u8,
+    pad0: u8 = undefined,
     sequence: u16,
     length: u32,
 
@@ -144,28 +146,7 @@ pub const ReplyHeader = extern struct {
     };
 };
 
-pub const Setup = extern struct {
-    status: u8,
-    pad0: u8,
-    protocol_major_version: u16,
-    protocol_minor_version: u16,
-    length: u16,
-    release_number: u32,
-    resource_id_base: u32,
-    resource_id_mask: u32,
-    motion_buffer_size: u32,
-    vendor_len: u16,
-    maximum_request_length: u16,
-    roots_len: u8,
-    pixmap_formats_len: u8,
-    image_byte_order: u8,
-    bitmap_format_bit_order: u8,
-    bitmap_format_scanline_unit: u8,
-    bitmap_format_scanline_pad: u8,
-    min_keycode: u8,
-    max_keycode: u8,
-    pad1: u32,
-
+pub const setup = struct {
     pub const Request = extern struct {
         byte_order: u8, // 'l' or 'B'
         pad0: u8 = undefined,
@@ -176,6 +157,29 @@ pub const Setup = extern struct {
         pad1: u16 = undefined,
         // auth_name padded to 4 bytes
         // auth_data padded to 4 bytes
+    };
+
+    pub const Reply = extern struct {
+        status: u8,
+        pad0: u8,
+        protocol_major_version: u16,
+        protocol_minor_version: u16,
+        length: u16,
+        release_number: u32,
+        resource_id_base: u32,
+        resource_id_mask: u32,
+        motion_buffer_size: u32,
+        vendor_len: u16,
+        maximum_request_length: u16,
+        roots_len: u8,
+        pixmap_formats_len: u8,
+        image_byte_order: u8,
+        bitmap_format_bit_order: u8,
+        bitmap_format_scanline_unit: u8,
+        bitmap_format_scanline_pad: u8,
+        min_keycode: u8,
+        max_keycode: u8,
+        pad1: u32,
     };
 
     pub const Failed = struct {
@@ -195,11 +199,13 @@ pub const Setup = extern struct {
 };
 
 pub const atom = struct {
-    pub const Intern = extern struct {
-        header: RequestHeader, // detail is only_if_exists: bool
-        name_len: u16,
-        pad0: u16 = undefined,
-        // name
+    pub const intern = extern struct {
+        pub const Request = extern struct {
+            header: RequestHeader, // detail is only_if_exists: bool
+            name_len: u16,
+            pad0: u16 = undefined,
+            // name
+        };
 
         pub const Reply = extern struct {
             header: ReplyHeader,
@@ -256,7 +262,7 @@ pub const window = struct {
     pub const Destroy = extern struct {
         header: RequestHeader = .{
             .opcode = .destroy_window,
-            .length = 2,
+            .length = @sizeOf(@This()) / 4,
         },
         window: Window,
     };
@@ -264,8 +270,42 @@ pub const window = struct {
     pub const Map = extern struct {
         header: RequestHeader = .{
             .opcode = .map_window,
-            .length = 2,
+            .length = @sizeOf(@This()) / 4,
         },
         window: Window,
+    };
+
+    pub const CreateGC = extern struct {
+        header: RequestHeader,
+        cid: GContext,
+        drawable: Drawable,
+        mask: u32,
+    };
+
+    pub const Kill = extern struct {
+        header: RequestHeader = .{
+            .opcode = .kill_client,
+            .length = @sizeOf(@This()) / 4,
+        },
+        window: Window,
+    };
+};
+
+pub const extension = struct {
+    pub const query = struct {
+        pub const Request = extern struct {
+            header: RequestHeader,
+            name_len: u16,
+            pad0: u16 = undefined,
+        };
+
+        pub const Reply = extern struct {
+            header: ReplyHeader,
+            present: bool,
+            major_opcode: u8,
+            first_event: u8,
+            first_error: u8,
+            pad0: [20]u8,
+        };
     };
 };

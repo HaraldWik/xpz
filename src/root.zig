@@ -14,8 +14,8 @@ pub const Screen = extern struct {
     current_input_masks: u32,
     width: u16,
     height: u16,
-    mm_width: u16,
-    mm_height: u16,
+    width_mm: u16,
+    height_mm: u16,
     min_installed_maps: u16,
     max_installed_maps: u16,
     visual_id: VisualId,
@@ -32,6 +32,10 @@ pub const VisualId = enum(u32) {
 pub const Drawable = union {
     window: Window,
     pixmap: Window,
+};
+
+pub const GContext = enum(u32) {
+    _,
 };
 
 pub const Window = enum(u32) {
@@ -134,4 +138,43 @@ pub const Window = enum(u32) {
     //     const reply = try client.reader.takeEnum(protocol.ReplyHeader, client.endian);
     //     if (reply != .reply) return error.InvalidReply;
     // }
+};
+
+pub const Extension = enum(u8) {
+    GLX,
+    RANDR,
+    XInputExtension,
+    Composite,
+    @"MIT-SHM",
+    _,
+
+    pub const Info = struct {
+        major_opcode: u8,
+        first_event: u8,
+        num_events: ?u8,
+        first_error: u8,
+    };
+
+    pub fn query(client: Client, extension: Extension) !protocol.extension.query.Reply {
+        const name: []const u8 = @tagName(extension);
+
+        const request: protocol.extension.query.Request = .{
+            .header = .{
+                .opcode = .query_extension,
+                .length = @intCast((@sizeOf(protocol.extension.query.Request) + ((name.len + 3) & ~@as(usize, 3))) / 4),
+            },
+            .name_len = @intCast(name.len),
+        };
+        try client.writer.writeStruct(request, .little);
+        try client.writer.writeAll(name);
+        client.writer.end += (4 - (client.writer.end % 4)) % 4; // Padding
+        try client.writer.flush();
+
+        try client.reader.fillMore();
+        const reply = try client.reader.takeStruct(protocol.extension.query.Reply, .little);
+
+        std.debug.print("{s} = {d}\n", .{ name, reply.major_opcode });
+
+        return reply;
+    }
 };

@@ -20,10 +20,6 @@ pub fn main(init: std.process.Init) !void {
         .auth = .{ .mit_magic_cookie_1 = .{ .xauthority = init.minimal.environ.getPosix("XAUTHORITY").? } },
     });
 
-    // const wm_delete_window: xpz.Atom = try .intern(client, false, "WM_DELETE_WINDOW");
-    // std.debug.print("wm_delete_window: {d}\n", .{@intFromEnum(wm_delete_window)});
-    // _ = wm_delete_window;
-
     const window: xpz.Window = client.generateId(xpz.Window, 0);
     try window.create(client, .{
         .parent = client.root_screen.window,
@@ -33,9 +29,11 @@ pub fn main(init: std.process.Init) !void {
         .visual_id = client.root_screen.visual_id,
     });
     defer window.destroy(client);
-
     try window.map(client);
     try client.writer.flush();
+
+    const glx = try xpz.Extension.query(client, .GLX);
+    std.debug.print("glx: {any}\n", .{glx});
 
     main_loop: while (true) {
         while (try xpz.Event.next(client)) |event| switch (event) {

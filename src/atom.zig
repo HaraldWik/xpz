@@ -74,26 +74,35 @@ pub const Atom = enum(u32) {
     wm_transient_for = 68,
     _,
 
+    pub const clipboard = "CLIPBOARD";
+    pub const targets = "TARGETS";
+    pub const utf8_string = "UTF8_STRING";
+    pub const net_wm_name = "_NET_WM_NAME";
+
     pub fn intern(client: Client, only_if_exists: bool, name: []const u8) !@This() {
-        const request: protocol.atom.Intern = .{
+        const padded_name_len = (name.len + 3) & ~@as(usize, 3);
+
+        const request: protocol.atom.intern.Request = .{
             .header = .{
                 .opcode = .intern_atom,
                 .detail = @intFromBool(only_if_exists),
-                .length = @intCast((@sizeOf(protocol.atom.Intern) - 8 + ((name.len + 3) & ~@as(usize, 3))) / 4),
+                .length = @intCast((@sizeOf(protocol.atom.intern.Request) + padded_name_len) / 4),
             },
             .name_len = @intCast(name.len),
         };
+
         try client.writer.writeStruct(request, client.endian);
+        try client.writer.writeAll(name);
+        client.writer.end += (4 - (client.writer.end % 4)) % 4; // Padding
+
         try client.writer.flush();
 
-        client.reader.tossBuffered();
-        try client.reader.fillMore();
-        const reply = try client.reader.takeStruct(protocol.atom.Intern.Reply, client.endian);
-        std.debug.print("intern atom reply: {any}\n", .{reply});
-        // if (reply.header.response_type != .reply) return error.InvalidResponseType;
+        const reply = try client.reader.takeStruct(protocol.atom.intern.Reply, client.endian);
+        std.debug.print("reply: {any}\n", .{reply});
 
-        std.debug.print("endian : {t}\n", .{client.endian});
+        std.debug.print("found atom: {s} = {d}\n", .{ name, reply.atom });
+        if (reply.header.response_type != .reply) return error.InvalidResponseType;
 
-        return @as(Atom, reply.atom);
+        return reply.atom;
     }
 };

@@ -10,7 +10,7 @@ writer: *std.Io.Writer,
 endian: std.builtin.Endian,
 
 // setup reply
-setup: protocol.Setup,
+setup: protocol.setup.Reply,
 
 root_screen: Screen,
 
@@ -30,7 +30,7 @@ pub fn init(io: std.Io, reader: *std.Io.Reader, writer: *std.Io.Writer, options:
         .none => "",
     };
 
-    const connect: protocol.Setup.Request = .{
+    const connect: protocol.setup.Request = .{
         .byte_order = switch (options.endian) {
             .big => 'B',
             .little => 'l',
@@ -59,7 +59,7 @@ pub fn init(io: std.Io, reader: *std.Io.Reader, writer: *std.Io.Writer, options:
         return error.SetupReply;
     }
 
-    const setup = try reader.takeStruct(protocol.Setup, options.endian);
+    const setup = try reader.takeStruct(protocol.setup.Reply, options.endian);
     // const vendor = try reader.peek(setup.vendor_len + 3);
     // std.debug.print("vendor: {s}\n", .{vendor});
 
@@ -68,6 +68,7 @@ pub fn init(io: std.Io, reader: *std.Io.Reader, writer: *std.Io.Writer, options:
     const screens_offset = setup.vendor_len + vendor_pad + formats_len;
     reader.toss(screens_offset);
     const root_screen = try reader.takeStruct(Screen, options.endian);
+    reader.tossBuffered();
 
     return .{
         .reader = reader,
