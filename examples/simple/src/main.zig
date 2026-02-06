@@ -27,13 +27,23 @@ pub fn main(init: std.process.Init) !void {
         .height = 300,
         .border_width = 1,
         .visual_id = client.root_screen.visual_id,
+        .background_pixel = 0x00c2185b, // ARGB color
+        // .events = .all,
+        .events = .{
+            .exposure = true,
+            .key_press = true,
+            .key_release = true,
+            .focus_change = true,
+            .button_press = true,
+            .button_release = true,
+        },
     });
     defer window.destroy(client);
     try window.map(client);
     try client.writer.flush();
 
-    const glx = try xpz.Extension.query(client, .GLX);
-    std.debug.print("glx: {any}\n", .{glx});
+    // const glx = try xpz.Extension.query(client, .GLX);
+    // std.debug.print("glx: {any}\n", .{glx});
 
     main_loop: while (true) {
         while (try xpz.Event.next(client)) |event| switch (event) {
@@ -47,6 +57,12 @@ pub fn main(init: std.process.Init) !void {
                 std.log.info("pressed key: ({c}) {d}", .{ if (std.ascii.isAlphanumeric(keycode)) keycode else '?', keycode });
             },
             .key_release => {},
+            .button_press, .button_release => |button| {
+                std.log.info("{t}: {t}", .{ event, @as(xpz.Event.Button.Type, @enumFromInt(button.header.detail)) });
+            },
+            .keymap_notify => |map| {
+                std.log.info("keymap_notify: {d} {any}", .{ map.detail, map.keys });
+            },
             else => |event_type| std.log.info("{t}", .{event_type}),
         };
     }

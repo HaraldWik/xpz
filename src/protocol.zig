@@ -216,32 +216,6 @@ pub const atom = struct {
 };
 
 pub const window = struct {
-    pub const Class = enum(u16) {
-        copy_from_parent = 0,
-        input_output = 1,
-        input_only = 2,
-    };
-
-    pub const ValueMask = packed struct(u32) {
-        background_pixmap: bool = false,
-        background_pixel: bool = false,
-        border_pixmap: bool = false,
-        border_pixel: bool = false,
-        bit_gravity: bool = false,
-        win_gravity: bool = false,
-        backing_store: bool = false,
-        backing_planes: bool = false,
-        backing_pixel: bool = false,
-        override_redirect: bool = false,
-        save_under: bool = false,
-        event_mask: bool = false,
-        do_not_propagate_mask: bool = false,
-        colormap: bool = false,
-        cursor: bool = false,
-
-        pad0: u17 = 0,
-    };
-
     pub const Create = extern struct {
         header: RequestHeader = .{
             .opcode = .create_window,
@@ -257,6 +231,32 @@ pub const window = struct {
         class: Class = .input_output,
         visual_id: VisualId, // usually copied from parent
         value_mask: ValueMask,
+
+        pub const Class = enum(u16) {
+            copy_from_parent = 0,
+            input_output = 1,
+            input_only = 2,
+        };
+
+        pub const ValueMask = packed struct(u32) {
+            background_pixmap: bool = false,
+            background_pixel: bool = false,
+            border_pixmap: bool = false,
+            border_pixel: bool = false,
+            bit_gravity: bool = false,
+            win_gravity: bool = false,
+            backing_store: bool = false,
+            backing_planes: bool = false,
+            backing_pixel: bool = false,
+            override_redirect: bool = false,
+            save_under: bool = false,
+            event_mask: bool = false,
+            do_not_propagate_mask: bool = false,
+            colormap: bool = false,
+            cursor: bool = false,
+
+            pad0: u17 = 0,
+        };
     };
 
     pub const Destroy = extern struct {

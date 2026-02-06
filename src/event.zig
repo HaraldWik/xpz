@@ -48,7 +48,7 @@ pub const Event = union(Tag) {
     non_standard: NonStandard,
 
     pub const Tag = enum(u8) {
-        close = 255,
+        close = 1,
         key_press = 2,
         key_release = 3,
         button_press = 4,
@@ -137,7 +137,7 @@ pub const Event = union(Tag) {
         x_root: i16,
         y_root: i16,
         state: ModifierState,
-        button: Type,
+        button: Type, // Dont use this field, use header.detail
         is_same_screen: u8,
 
         pub const Type = enum(u8) {
@@ -463,7 +463,7 @@ pub const Event = union(Tag) {
 
     pub const NonStandard = extern struct {
         header: Header,
-        data: [32]u8, // arbitrary non-standard event payload
+        data: [28]u8, // arbitrary non-standard event payload
     };
 
     pub const Mask = packed struct(u32) {
@@ -493,6 +493,34 @@ pub const Event = union(Tag) {
         colormap_change: bool = false,
         owner_grab_button: bool = false,
         pad0: u7 = 0,
+
+        pub const all: @This() = .{
+            .key_press = true,
+            .key_release = true,
+            .button_press = true,
+            .button_release = true,
+            .enter_window = true,
+            .leave_window = true,
+            .pointer_motion = true,
+            .pointer_motion_hint = true,
+            .button_1_motion = true,
+            .button_2_motion = true,
+            .button_3_motion = true,
+            .button_4_motion = true,
+            .button_5_motion = true,
+            .button_motion = true,
+            .keymap_state = true,
+            .exposure = true,
+            .visibility_change = true,
+            .structure_notify = true,
+            .resize_redirect = true,
+            .substructure_notify = true,
+            .substructure_redirect = true,
+            .focus_change = true,
+            .property_change = true,
+            .colormap_change = true,
+            .owner_grab_button = true,
+        };
     };
 
     pub fn next(client: Client) !?@This() {
@@ -511,7 +539,7 @@ pub const Event = union(Tag) {
         if ((pfd[0].revents & std.posix.POLL.HUP) != 0) return .close;
 
         client.reader.tossBuffered();
-        client.reader.fillMore() catch |err| return switch (err) {
+        _ = client.reader.fill(32) catch |err| return switch (err) {
             error.EndOfStream => .close,
             else => err,
         };
@@ -577,7 +605,8 @@ pub const Event = union(Tag) {
             .client_message => .{ .client_message = try client.reader.takeStruct(ClientMessage, client.endian) },
             .mapping_notify => .{ .mapping_notify = try client.reader.takeStruct(MappingNotify, client.endian) },
 
-            else => .{ .non_standard = try client.reader.takeStruct(NonStandard, client.endian) },
+            _, .non_standard => .{ .non_standard = try client.reader.takeStruct(NonStandard, client.endian) },
+            .close => .close,
         };
     }
 };
