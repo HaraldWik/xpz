@@ -6,6 +6,13 @@ pub const Client = @import("Client.zig");
 pub const Event = @import("event.zig").Event;
 pub const Atom = @import("atom.zig").Atom;
 
+pub const PixmapFormat = extern struct {
+    depth: u8,
+    bits_per_pixel: u8,
+    scanline_pad: u8,
+    pad0: [5]u8 = undefined,
+};
+
 pub const Screen = extern struct {
     window: Window, // root
     default_colormap: u32,
@@ -18,11 +25,18 @@ pub const Screen = extern struct {
     height_mm: u16,
     min_installed_maps: u16,
     max_installed_maps: u16,
-    visual_id: VisualId,
+    visual_id: Visual.Id,
     backing_stores: u8,
     save_unders: u8,
     root_depth: u8,
-    num_depths: u8,
+    depths_count: u8,
+
+    pub const Depth = extern struct {
+        depth: u8,
+        pad0: u8 = undefined,
+        visuals_count: u16,
+        pad1: u32 = undefined,
+    };
 };
 
 pub const Drawable = union {
@@ -30,8 +44,29 @@ pub const Drawable = union {
     pixmap: Window,
 };
 
-pub const VisualId = enum(u32) {
-    _,
+pub const Visual = extern struct {
+    id: Id,
+    class: u8,
+    bits_per_rgb_value: u8,
+    colormap_entries: u16,
+    red_mask: u32,
+    green_mask: u32,
+    blue_mask: u32,
+    pad0: u32 = undefined,
+
+    pub const Id = enum(u32) {
+        _,
+    };
+
+    pub const Class = enum(u8) {
+        static_gray = 0,
+        gray_scale = 1,
+        static_color = 2,
+        pseudo_color = 3,
+        true_color = 4,
+        direct_color = 5,
+        _, // Non standard
+    };
 };
 
 pub const GContext = enum(u32) {
@@ -56,30 +91,8 @@ pub const Window = enum(u32) {
         width: u16,
         height: u16,
         border_width: u16,
-        visual_id: VisualId,
-
-        background_pixmap: ?enum(u32) {
-            none = 0,
-            parent_relative = 1,
-            _, // Pixmap XID
-        } = null,
-        background_pixel: ?u32 = null, // ARGB example: 0x00ff0000
-        border_pixmap: ?enum(u32) {
-            copy_from_parent = 0,
-            _, // Pixmap XID
-        } = null,
-        border_pixel: ?u32 = null, // bitmask, varies
-        bit_gravity: ?gravity.Bit = null,
-        win_gravity: ?gravity.Win = null,
-        backing_store: ?backing.Store = null,
-        backing_planes: ?u32 = null, // Plane mask (bitmask)
-        backing_pixel: ?u32 = null, // Pixel value used with backing_planes,
-        override_redirect: ?bool = null,
-        save_under: ?bool = null,
-        events: ?Event.Mask = null,
-        do_not_propagate_mask: ?Event.Mask = null,
-        colormap: ?Colormap = null, // Colormap XID
-        cursor: ?Cursor = null,
+        visual_id: Visual.Id,
+        attributes: Attributes = .{},
     };
 
     pub const gravity = struct {
@@ -118,6 +131,97 @@ pub const Window = enum(u32) {
             when_mapped = 1, // WhenMapped
             always = 2, // Always
         };
+    };
+
+    pub const Attributes = struct {
+        background_pixmap: ?enum(u32) {
+            none = 0,
+            parent_relative = 1,
+            _, // Pixmap XID
+        } = null,
+        background_pixel: ?u32 = null, // ARGB example: 0x00ff0000
+        border_pixmap: ?enum(u32) {
+            copy_from_parent = 0,
+            _, // Pixmap XID
+        } = null,
+        border_pixel: ?u32 = null, // bitmask, varies
+        bit_gravity: ?gravity.Bit = null,
+        win_gravity: ?gravity.Win = null,
+        backing_store: ?backing.Store = null,
+        backing_planes: ?u32 = null, // Plane mask (bitmask)
+        backing_pixel: ?u32 = null, // Pixel value used with backing_planes,
+        override_redirect: ?bool = null,
+        save_under: ?bool = null,
+        events: ?Event.Mask = null,
+        do_not_propagate_mask: ?Event.Mask = null,
+        colormap: ?Colormap = null, // Colormap XID
+        cursor: ?Cursor = null,
+
+        pub const Mask = packed struct(u32) {
+            background_pixmap: bool = false,
+            background_pixel: bool = false,
+            border_pixmap: bool = false,
+            border_pixel: bool = false,
+            bit_gravity: bool = false,
+            win_gravity: bool = false,
+            backing_store: bool = false,
+            backing_planes: bool = false,
+            backing_pixel: bool = false,
+            override_redirect: bool = false,
+            save_under: bool = false,
+            event_mask: bool = false,
+            do_not_propagate_mask: bool = false,
+            colormap: bool = false,
+            cursor: bool = false,
+
+            pad0: u17 = 0,
+        };
+
+        pub fn mask(self: @This()) Mask {
+            return .{
+                .background_pixmap = self.background_pixmap != null,
+                .background_pixel = self.background_pixel != null,
+                .border_pixmap = self.border_pixmap != null,
+                .border_pixel = self.border_pixel != null,
+                .bit_gravity = self.bit_gravity != null,
+                .win_gravity = self.win_gravity != null,
+                .backing_store = self.backing_store != null,
+                .backing_planes = self.backing_planes != null,
+                .backing_pixel = self.backing_pixel != null,
+                .override_redirect = self.override_redirect != null,
+                .save_under = self.save_under != null,
+                .event_mask = self.events != null,
+                .do_not_propagate_mask = self.do_not_propagate_mask != null,
+                .colormap = self.colormap != null,
+                .cursor = self.cursor != null,
+            };
+        }
+
+        pub fn write(self: @This(), client: Client) !void {
+            if (self.background_pixmap) |background_pixmap| try client.writer.writeInt(u32, @intFromEnum(background_pixmap), client.endian);
+            if (self.background_pixel) |background_pixel| try client.writer.writeInt(u32, background_pixel, client.endian);
+            if (self.border_pixmap) |border_pixmap| try client.writer.writeInt(u32, @intFromEnum(border_pixmap), client.endian);
+            if (self.border_pixel) |border_pixel| try client.writer.writeInt(u32, border_pixel, client.endian);
+            if (self.bit_gravity) |bit_gravity| try client.writer.writeInt(i32, @intFromEnum(bit_gravity), client.endian);
+            if (self.win_gravity) |win_gravity| try client.writer.writeInt(i32, @intFromEnum(win_gravity), client.endian);
+            if (self.backing_store) |backing_store| try client.writer.writeInt(i32, @intFromEnum(backing_store), client.endian);
+            if (self.backing_planes) |backing_planes| try client.writer.writeInt(u32, backing_planes, client.endian);
+            if (self.backing_pixel) |backing_pixel| try client.writer.writeInt(u32, backing_pixel, client.endian);
+            if (self.override_redirect) |override_redirect| try client.writer.writeInt(u32, @intFromBool(override_redirect), client.endian);
+            if (self.save_under) |save_under| try client.writer.writeInt(u32, @intFromBool(save_under), client.endian);
+            if (self.events) |event_mask| try client.writer.writeStruct(event_mask, client.endian);
+            if (self.do_not_propagate_mask) |do_not_propagate_mask| try client.writer.writeStruct(do_not_propagate_mask, client.endian);
+            if (self.colormap) |colormap| try client.writer.writeInt(u32, @intFromEnum(colormap), client.endian);
+            if (self.cursor) |cursor| try client.writer.writeInt(u32, @intFromEnum(cursor), client.endian);
+        }
+
+        pub fn count(self: @This()) usize {
+            var c: usize = 0;
+            inline for (std.meta.fields(@This())) |field| {
+                if (@field(self, field.name) != null) c += 1;
+            }
+            return c;
+        }
     };
 
     /// Same as XSizeHints
@@ -160,12 +264,10 @@ pub const Window = enum(u32) {
     };
 
     pub fn create(self: @This(), client: Client, config: Config) !void {
-        const flag_count = 2;
-
         const request: protocol.window.Create = .{
             .header = .{
                 .opcode = .create_window,
-                .length = 8 + flag_count,
+                .length = 8 + @as(u16, @intCast(config.attributes.count())),
             },
             .window = self,
             .parent = config.parent,
@@ -175,42 +277,11 @@ pub const Window = enum(u32) {
             .height = config.height,
             .border_width = config.border_width,
             .visual_id = config.visual_id,
-            .value_mask = .{
-                .background_pixmap = config.background_pixmap != null,
-                .background_pixel = config.background_pixel != null,
-                .border_pixmap = config.border_pixmap != null,
-                .border_pixel = config.border_pixel != null,
-                .bit_gravity = config.bit_gravity != null,
-                .win_gravity = config.win_gravity != null,
-                .backing_store = config.backing_store != null,
-                .backing_planes = config.backing_planes != null,
-                .backing_pixel = config.backing_pixel != null,
-                .override_redirect = config.override_redirect != null,
-                .save_under = config.save_under != null,
-                .event_mask = config.events != null,
-                .do_not_propagate_mask = config.do_not_propagate_mask != null,
-                .colormap = config.colormap != null,
-                .cursor = config.cursor != null,
-            },
+            .value_mask = config.attributes.mask(),
         };
 
         try client.writer.writeStruct(request, client.endian);
-
-        if (config.background_pixmap) |background_pixmap| try client.writer.writeInt(u32, @intFromEnum(background_pixmap), client.endian);
-        if (config.background_pixel) |background_pixel| try client.writer.writeInt(u32, background_pixel, client.endian);
-        if (config.border_pixmap) |border_pixmap| try client.writer.writeInt(u32, @intFromEnum(border_pixmap), client.endian);
-        if (config.border_pixel) |border_pixel| try client.writer.writeInt(u32, border_pixel, client.endian);
-        if (config.bit_gravity) |bit_gravity| try client.writer.writeInt(i32, @intFromEnum(bit_gravity), client.endian);
-        if (config.win_gravity) |win_gravity| try client.writer.writeInt(i32, @intFromEnum(win_gravity), client.endian);
-        if (config.backing_store) |backing_store| try client.writer.writeInt(i32, @intFromEnum(backing_store), client.endian);
-        if (config.backing_planes) |backing_planes| try client.writer.writeInt(u32, backing_planes, client.endian);
-        if (config.backing_pixel) |backing_pixel| try client.writer.writeInt(u32, backing_pixel, client.endian);
-        if (config.override_redirect) |override_redirect| try client.writer.writeInt(u32, @intFromBool(override_redirect), client.endian);
-        if (config.save_under) |save_under| try client.writer.writeInt(u32, @intFromBool(save_under), client.endian);
-        if (config.events) |event_mask| try client.writer.writeStruct(event_mask, client.endian);
-        if (config.do_not_propagate_mask) |do_not_propagate_mask| try client.writer.writeStruct(do_not_propagate_mask, client.endian);
-        if (config.colormap) |colormap| try client.writer.writeInt(u32, @intFromEnum(colormap), client.endian);
-        if (config.cursor) |cursor| try client.writer.writeInt(u32, @intFromEnum(cursor), client.endian);
+        try config.attributes.write(client);
     }
 
     pub fn destroy(self: @This(), client: Client) void {
@@ -224,9 +295,62 @@ pub const Window = enum(u32) {
         try client.writer.writeStruct(request, client.endian);
     }
 
-    // pub fn changeProperty(self: @This(), c: Client, mode: Property.ChangeMode, property: Atom, @"type": Atom, format: Format, data: []const u8) !void {
-    // try Property.change(c, mode, self, property, @"type", format, data);
-    // }
+    pub fn changeAttributes(self: @This(), client: Client, attributes: Attributes) !void {
+        const request: protocol.window.ChangeAttributes = .{
+            .header = .{
+                .opcode = .change_window_attributes,
+                .length = @intCast(3 + attributes.count()),
+            },
+            .window = self,
+            .value_mask = attributes.mask(),
+        };
+        try client.writer.writeStruct(request, client.endian);
+        try client.writer.flush();
+    }
+
+    pub fn clearArea(self: Window, client: Client, config: struct {
+        exposures: bool = false,
+        x: i16 = 0,
+        y: i16 = 0,
+        width: u16 = 0,
+        height: u16 = 0,
+    }) !void {
+        const request: protocol.window.ClearArea = .{
+            .header = .{
+                .opcode = .clear_area,
+                .length = 4,
+            },
+            .exposures = config.exposures,
+            .window = self,
+            .x = config.x,
+            .y = config.y,
+            .width = config.width,
+            .height = config.height,
+        };
+
+        try client.writer.writeStruct(request, client.endian);
+        try client.writer.flush();
+    }
+
+    pub fn changeProperty(self: @This(), client: Client, mode: protocol.window.ChangeProperty.ChangeMode, property: Atom, @"type": Atom, format: Format, data: []const u8) !void {
+        const request: protocol.window.ChangeProperty = .{
+            .mode = mode,
+            .window = self,
+            .property = property,
+            .type = @"type",
+            .format = format,
+        };
+        try client.writer.writeStruct(request, .little);
+        const element_count = switch (format) {
+            .@"8" => data.len,
+            .@"16" => data.len / 2,
+            .@"32" => data.len / 4,
+        };
+        try client.writer.writeInt(u32, @intCast(element_count), .little);
+        client.writer.end += (4 - (data.len % 4)) % 4;
+        try client.writer.writeAll(data);
+        try client.writer.flush();
+    }
 
     // pub fn setHints(self: @This(), client: Client, hints: Hints) !void {
     //     client.reader.tossBuffered();
@@ -237,6 +361,12 @@ pub const Window = enum(u32) {
     //     const reply = try client.reader.takeEnum(protocol.ReplyHeader, client.endian);
     //     if (reply != .reply) return error.InvalidReply;
     // }
+};
+
+pub const Format = enum(u8) {
+    @"8" = 8,
+    @"16" = 16,
+    @"32" = 32,
 };
 
 pub const Extension = enum(u8) {
@@ -264,13 +394,13 @@ pub const Extension = enum(u8) {
             },
             .name_len = @intCast(name.len),
         };
-        try client.writer.writeStruct(request, .little);
+        try client.writer.writeStruct(request, client.endian);
         try client.writer.writeAll(name);
         client.writer.end += (4 - (client.writer.end % 4)) % 4; // Padding
         try client.writer.flush();
 
         try client.reader.fillMore();
-        const reply = try client.reader.takeStruct(protocol.extension.query.Reply, .little);
+        const reply = try client.reader.takeStruct(protocol.extension.query.Reply, client.endian);
 
         std.debug.print("{s} = {d}\n", .{ name, reply.major_opcode });
 

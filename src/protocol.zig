@@ -1,8 +1,9 @@
 const Atom = @import("atom.zig").Atom;
 const Window = @import("root.zig").Window;
-const VisualId = @import("root.zig").VisualId;
+const Visual = @import("root.zig").Visual;
 const GContext = @import("root.zig").GContext;
 const Drawable = @import("root.zig").Drawable;
+const Format = @import("root.zig").Format;
 
 pub const RequestHeader = extern struct {
     pub const Opcode = enum(u8) {
@@ -142,6 +143,7 @@ pub const ReplyHeader = extern struct {
     pub const ResponseType = enum(u8) {
         err = 0,
         reply = 1,
+        auth = 2,
         _, // events
     };
 };
@@ -160,7 +162,7 @@ pub const setup = struct {
     };
 
     pub const Reply = extern struct {
-        status: u8,
+        status: ReplyHeader.ResponseType,
         pad0: u8,
         protocol_major_version: u16,
         protocol_minor_version: u16,
@@ -171,9 +173,9 @@ pub const setup = struct {
         motion_buffer_size: u32,
         vendor_len: u16,
         maximum_request_length: u16,
-        roots_len: u8,
-        pixmap_formats_len: u8,
-        image_byte_order: u8,
+        screen_count: u8, // 'root_len'
+        pixmap_format_count: u8,
+        image_byte_order: u8, // endian
         bitmap_format_bit_order: u8,
         bitmap_format_scanline_unit: u8,
         bitmap_format_scanline_pad: u8,
@@ -229,33 +231,13 @@ pub const window = struct {
         height: u16,
         border_width: u16,
         class: Class = .input_output,
-        visual_id: VisualId, // usually copied from parent
-        value_mask: ValueMask,
+        visual_id: Visual.Id, // usually copied from parent
+        value_mask: Window.Attributes.Mask,
 
         pub const Class = enum(u16) {
             copy_from_parent = 0,
             input_output = 1,
             input_only = 2,
-        };
-
-        pub const ValueMask = packed struct(u32) {
-            background_pixmap: bool = false,
-            background_pixel: bool = false,
-            border_pixmap: bool = false,
-            border_pixel: bool = false,
-            bit_gravity: bool = false,
-            win_gravity: bool = false,
-            backing_store: bool = false,
-            backing_planes: bool = false,
-            backing_pixel: bool = false,
-            override_redirect: bool = false,
-            save_under: bool = false,
-            event_mask: bool = false,
-            do_not_propagate_mask: bool = false,
-            colormap: bool = false,
-            cursor: bool = false,
-
-            pad0: u17 = 0,
         };
     };
 
@@ -288,6 +270,45 @@ pub const window = struct {
             .length = @sizeOf(@This()) / 4,
         },
         window: Window,
+    };
+
+    pub const ChangeAttributes = extern struct {
+        header: RequestHeader = .{
+            .opcode = .change_window_attributes,
+            .length = 0,
+        },
+        window: Window,
+        value_mask: Window.Attributes.Mask,
+    };
+
+    pub const ChangeProperty = extern struct {
+        opcode: RequestHeader.Opcode = .change_property,
+        mode: ChangeMode,
+        pad0: u16 = undefined,
+        window: Window,
+        property: Atom,
+        type: Atom,
+        format: Format,
+        pad1: [3]u8 = undefined,
+
+        pub const ChangeMode = enum(u8) {
+            replace = 0,
+            prepend = 1,
+            append = 2,
+        };
+    };
+
+    pub const ClearArea = extern struct {
+        header: RequestHeader = .{
+            .opcode = .clear_area,
+            .length = 4,
+        },
+        window: Window,
+        exposures: bool,
+        x: i16,
+        y: i16,
+        width: u16,
+        height: u16,
     };
 };
 

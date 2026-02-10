@@ -3,12 +3,7 @@ const protocol = @import("protocol.zig");
 const Client = @import("Client.zig");
 const Atom = @import("atom.zig").Atom;
 const Window = @import("root.zig").Window;
-
-pub const Format = enum(u8) {
-    @"8" = 8,
-    @"16" = 16,
-    @"32" = 32,
-};
+const Format = @import("root.zig").Format;
 
 pub const Event = union(Tag) {
     close: void,
@@ -543,34 +538,10 @@ pub const Event = union(Tag) {
             error.EndOfStream => .close,
             else => err,
         };
-        const header = try client.reader.peekStruct(Header, client.endian);
+        const response_type = try client.checkError();
+        if (response_type == .reply) return null;
 
-        switch (header.response_type) {
-            .err => return switch (header.detail) {
-                1 => error.Request,
-                2 => error.Value,
-                3 => error.Window,
-                4 => error.Pixmap,
-                5 => error.Atom,
-                6 => error.Cursor,
-                7 => error.Font,
-                8 => error.Match,
-                9 => error.Drawable,
-                10 => error.Access,
-                11 => error.Alloc,
-                12 => error.Colormap,
-                13 => error.GC,
-                14 => error.IDChoice,
-                15 => error.Name,
-                16 => error.Length,
-                17 => error.Implementation,
-                else => null,
-            },
-            .reply => return null,
-            else => {},
-        }
-
-        return switch (@as(Tag, @enumFromInt(@intFromEnum(header.response_type)))) {
+        return switch (@as(Tag, @enumFromInt(@intFromEnum(response_type)))) {
             .key_press => .{ .key_press = try client.reader.takeStruct(Key, client.endian) },
             .key_release => .{ .key_release = try client.reader.takeStruct(Key, client.endian) },
             .button_press => .{ .button_press = try client.reader.takeStruct(Button, client.endian) },
