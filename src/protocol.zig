@@ -283,14 +283,13 @@ pub const window = struct {
     };
 
     pub const ChangeProperty = extern struct {
-        opcode: RequestHeader.Opcode = .change_property,
-        mode: ChangeMode,
-        pad0: u16 = undefined,
+        // detail = ChangeMode,
+        header: RequestHeader,
         window: Window,
         property: Atom,
         type: Atom,
         format: Format,
-        pad1: [3]u8 = undefined,
+        pad0: [3]u8 = undefined,
 
         pub const ChangeMode = enum(u8) {
             replace = 0,

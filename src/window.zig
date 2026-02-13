@@ -11,17 +11,6 @@ const Format = @import("root.zig").Format;
 pub const Window = enum(u32) {
     _,
 
-    pub const Config = struct {
-        parent: Window,
-        x: i16 = 0,
-        y: i16 = 0,
-        width: u16,
-        height: u16,
-        border_width: u16,
-        visual_id: Visual.Id,
-        attributes: Attributes = .{},
-    };
-
     pub const gravity = struct {
         pub const Bit = enum(i32) {
             forget = 0, // ForgetGravity
@@ -151,6 +140,13 @@ pub const Window = enum(u32) {
         }
     };
 
+    pub const Property = union(enum) {
+        bytes: []const u8,
+        u16s: []const u16,
+        u32s: []const u32,
+        atoms: []const Atom,
+    };
+
     /// Same as XSizeHints
     pub const Hints = extern struct {
         flags: Flags,
@@ -182,12 +178,23 @@ pub const Window = enum(u32) {
             size: bool = false,
             min_size: bool = false,
             max_size: bool = false,
-            resize_inc: bool = false,
+            resizable: bool = false,
             aspect: bool = false,
             base_size: bool = false,
             win_gravity: bool = false,
             pad0: u22 = 0,
         };
+    };
+
+    pub const Config = struct {
+        parent: Window,
+        x: i16 = 0,
+        y: i16 = 0,
+        width: u16,
+        height: u16,
+        border_width: u16,
+        visual_id: Visual.Id,
+        attributes: Attributes = .{},
     };
 
     pub fn create(self: @This(), client: Client, config: Config) !void {
@@ -260,33 +267,43 @@ pub const Window = enum(u32) {
     }
 
     pub fn changeProperty(self: @This(), client: Client, mode: protocol.window.ChangeProperty.ChangeMode, property: Atom, @"type": Atom, format: Format, data: []const u8) !void {
+        if (format == .@"16" and data.len % 2 != 0)
+            return error.InvalidLength;
+        if (format == .@"32" and data.len % 4 != 0)
+            return error.InvalidLength;
+
+        const element_count: u32 = switch (format) {
+            .@"8" => @intCast(data.len),
+            .@"16" => @intCast(data.len / 2),
+            .@"32" => @intCast(data.len / 4),
+        };
+
+        const padded_len = (data.len + 3) & ~@as(usize, 3);
+        const total_bytes = @sizeOf(protocol.window.ChangeProperty) + 4 + padded_len;
+
         const request: protocol.window.ChangeProperty = .{
-            .mode = mode,
+            .header = .{
+                .opcode = .change_property,
+                .detail = @intFromEnum(mode),
+                .length = @intCast(total_bytes / 4),
+            },
             .window = self,
             .property = property,
             .type = @"type",
             .format = format,
         };
-        try client.writer.writeStruct(request, .little);
-        const element_count = switch (format) {
-            .@"8" => data.len,
-            .@"16" => data.len / 2,
-            .@"32" => data.len / 4,
-        };
-        try client.writer.writeInt(u32, @intCast(element_count), .little);
-        // client.writer.end += (4 - (data.len % 4)) % 4;
-        _ = try client.writer.splatByte(0, (4 - (data.len % 4)) % 4);
+
+        try client.writer.writeStruct(request, client.endian);
+        try client.writer.writeInt(u32, element_count, client.endian);
         try client.writer.writeAll(data);
+
+        _ = try client.writer.splatByte(0, padded_len - data.len);
+
         try client.writer.flush();
     }
 
-    // pub fn setHints(self: @This(), client: Client, hints: Hints) !void {
-    //     client.reader.tossBuffered();
-    //     try self.changeProperty(client, .append, .wm_size_hints, .atom, .@"32", &std.mem.toBytes(hints));
-    //     try client.reader.fillMore();
-    //     defer client.reader.tossBuffered();
-
-    //     const reply = try client.reader.takeEnum(protocol.ReplyHeader, client.endian);
-    //     if (reply != .reply) return error.InvalidReply;
-    // }
+    pub fn setHints(self: @This(), client: Client, hints: Hints) !void {
+        client.reader.tossBuffered();
+        try self.changeProperty(client, .append, .wm_size_hints, .atom, .@"32", &std.mem.toBytes(hints));
+    }
 };

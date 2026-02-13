@@ -51,7 +51,6 @@ pub fn init(io: std.Io, reader: *std.Io.Reader, writer: *std.Io.Writer, options:
         },
         .xdm_authorization_1 => @panic("currently unsupported auth protocol"),
         .custom => |auth| auth.data,
-        .none => "",
     };
 
     const request: protocol.setup.Request = .{
@@ -82,7 +81,7 @@ pub fn init(io: std.Io, reader: *std.Io.Reader, writer: *std.Io.Writer, options:
         .err => {
             const reason_len = try reader.takeInt(u8, options.endian);
             const reason = try reader.take(reason_len);
-            if (reason.len != 0) std.log.err("{s}", .{reason[1..]});
+            if (reason.len > 1) std.log.err("{s}", .{reason[1..]});
             return error.SetupReply;
         },
         .auth => {
@@ -186,7 +185,11 @@ pub const Auth = union(enum) {
     mit_magic_cookie_1: @"MIT-MAGIC-COOKIE-1",
     xdm_authorization_1: @"XDM-AUTHORIZATION-1",
     custom: Custom,
-    none: None,
+
+    pub const none: @This() = .{ .custom = .{
+        .protocol_name = "",
+        .data = "",
+    } };
 
     pub const @"MIT-MAGIC-COOKIE-1" = struct {
         /// Can be found in enviorment variable $XAUTHORITY
@@ -248,10 +251,6 @@ pub const Auth = union(enum) {
     pub const Custom = struct {
         protocol_name: []const u8,
         data: []const u8,
-    };
-
-    pub const None = struct {
-        pub const protocol_name = "";
     };
 
     pub fn getName(self: @This()) []const u8 {

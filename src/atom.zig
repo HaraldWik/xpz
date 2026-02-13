@@ -77,17 +77,79 @@ pub const Atom = enum(u32) {
     pub const clipboard = "CLIPBOARD";
     pub const targets = "TARGETS";
     pub const utf8_string = "UTF8_STRING";
-    pub const wm_protocols = "WM_PROTOCOLS";
-    pub const wm_delete_window = "wm_delete_window";
 
-    /// EWMH
+    /// Core ICCCM (legacy) properties
+    pub const wm = struct {
+        pub const protocols = "WM_PROTOCOLS";
+        pub const delete_window = "WM_DELETE_WINDOW";
+        pub const take_focus = "WM_TAKE_FOCUS";
+    };
+
+    /// EWMH (Extended Window Manager Hints) properties
     pub const net_wm = struct {
+        /// UTF-8 title of the window
         pub const name = "_NET_WM_NAME";
-        pub const state = "_NET_WM_STATE";
-        pub const window_type = "_NET_WM_WINDOW_TYPE";
-        pub const ive_window = "_NET_ACTIVE_WINDOW";
+        /// UTF8_STRING / 8 Icon title
+        pub const icon_name = "_NET_WM_ICON_NAME";
+        /// Index of the desktop/workspace the window is on
         pub const desktop = "_NET_WM_DESKTOP";
+
+        pub const state = struct {
+            /// List of states like fullscreen, maximized, above, or below
+            pub const property = "_NET_WM_STATE";
+            /// Make window fullscreen
+            pub const fullscreen = "_NET_WM_STATE_FULLSCREEN";
+            /// Maximize vertically
+            pub const maximized_vert = "_NET_WM_STATE_MAXIMIZED_VERT";
+            /// Maximize horizontally
+            pub const maximized_horz = "_NET_WM_STATE_MAXIMIZED_HORZ";
+            /// Keep window above others
+            pub const above = "_NET_WM_STATE_ABOVE";
+            /// Keep window below others
+            pub const below = "_NET_WM_STATE_BELOW";
+            /// Show on all desktops
+            pub const sticky = "_NET_WM_STATE_STICKY";
+        };
+        /// Type of window (normal, dialog, splash, dock, etc.)
+        pub const window_type = "_NET_WM_WINDOW_TYPE";
+        /// Process ID of the client
+        pub const pid = "_NET_WM_PID";
+        /// Transparency (0–0xFFFFFFFF)
+        pub const opacity = "_NET_WM_OPACITY";
+        /// Icon data (width, height, ARGB pixels)
         pub const icon = "_NET_WM_ICON";
+        /// Reserved edges (panels/docks)
+        pub const strut = "_NET_WM_STRUT";
+        /// Reserved edges (panels/docks)
+        pub const strut_partial = "_NET_WM_STRUT_PARTIAL";
+        /// Tells compositor whether to bypass effects
+        pub const bypass_compositor = "_NET_WM_BYPASS_COMPOSITOR";
+        // ClientMessage request to move/resize window
+        pub const moveresize = "_NET_WM_MOVERESIZE";
+        /// Geometry info for iconified windows
+        pub const icon_geometry = "_NET_WM_ICON_GEOMETRY";
+        /// What actions WM can do (move, resize, close)
+        pub const allowed_actions = "_NET_WM_ALLOWED_ACTIONS";
+        /// Which monitors a fullscreen window covers
+        pub const fullscreen_monitors = "_NET_WM_FULLSCREEN_MONITORS";
+    };
+
+    /// Workspace / Window Management Properties
+    pub const net = struct {
+        /// Set by WM; client can request focus via ClientMessage
+        pub const active_window = "_NET_ACTIVE_WINDOW";
+        /// Set by WM; list of managed windows
+        pub const client_list = "_NET_CLIENT_LIST";
+        /// Set by WM; stacking order
+        pub const client_list_stacking = "_NET_CLIENT_LIST_STACKING";
+        /// Current workspace index
+        pub const current_desktop = "_NET_CURRENT_DESKTOP";
+        // Total number of workspaces
+        pub const number_of_desktops = "_NET_NUMBER_OF_DESKTOPS";
+        /// UTF8_STRINGs
+        pub const desktop_names = "_NET_DESKTOP_NAMES";
+        /// ClientMessage request to close a window
+        pub const close_windoww = "_NET_CLOSE_WINDOW";
     };
 
     pub fn intern(client: Client, only_if_exists: bool, name: []const u8) !@This() {
