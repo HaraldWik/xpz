@@ -16,12 +16,29 @@ setup: protocol.setup.Reply,
 
 root_screen: Screen,
 
+/// Provides setup information about the server, including vendor, screens, their depths, and pixel formats.
+/// The data received through these callbacks is only valid within the callback scope.
+/// Accessing it outside of these callbacks may result in undefined behavior.
+pub const SetupListener = struct {
+    user_data: ?*anyopaque = null,
+    /// Called once
+    vendor: ?*const fn (user_data: ?*anyopaque, name: []const u8) anyerror!void = null,
+    /// Called once for each pixmap format of a screen depth.
+    pixmapFormat: ?*const fn (user_data: ?*anyopaque, format: PixmapFormat) anyerror!void = null,
+    /// Called once for each screen.
+    screen: ?*const fn (user_data: ?*anyopaque, screen: Screen) anyerror!void = null,
+    /// Called once for each depth of a screen.
+    screenDepth: ?*const fn (user_data: ?*anyopaque, screen: Screen, depth: Screen.Depth) anyerror!void = null,
+    /// Called once for each visual in the depth of a screen.
+    screenDepthVisual: ?*const fn (user_data: ?*anyopaque, screen: Screen, depth: Screen.Depth, visual: Visual) anyerror!void = null,
+};
+
 pub const Options = struct {
     endian: std.builtin.Endian = .native,
     protocol_major: u16 = 11,
     protocol_minor: u16 = 0,
     auth: Auth,
-    screens: []Screen,
+    setup_listener: ?SetupListener = null,
 };
 
 pub fn init(io: std.Io, reader: *std.Io.Reader, writer: *std.Io.Writer, options: Options) !@This() {
@@ -50,9 +67,10 @@ pub fn init(io: std.Io, reader: *std.Io.Reader, writer: *std.Io.Writer, options:
 
     try writer.writeStruct(request, .little);
     if (try writer.write(auth_name) != auth_name.len) return error.BufferTooSmall;
-    writer.end += (4 - (writer.end % 4)) % 4; // Padding
+    _ = try writer.splatByte(0, (4 - (writer.end % 4)) % 4); // Padding
     if (try writer.write(auth_data) != auth_data.len) return error.BufferTooSmall;
-    writer.end += (4 - (writer.end % 4)) % 4; // Padding
+    _ = try writer.splatByte(0, (4 - (writer.end % 4)) % 4); // Padding
+
     try writer.flush();
 
     // Read setup
@@ -79,11 +97,11 @@ pub fn init(io: std.Io, reader: *std.Io.Reader, writer: *std.Io.Writer, options:
     const reply = try reader.takeStruct(protocol.setup.Reply, options.endian);
 
     const vendor = std.mem.trimEnd(u8, try reader.take(reply.vendor_len), &.{0});
-    std.debug.print("vendor: {s}\n", .{vendor});
+    if (options.setup_listener) |setup_listener| if (setup_listener.vendor) |f| try f(setup_listener.user_data, vendor);
 
-    for (0..reply.pixmap_format_count) |i| {
+    for (0..reply.pixmap_format_count) |_| {
         const pixmap_format = try reader.takeStruct(PixmapFormat, options.endian);
-        std.log.info("pixmap_format: {d} {any}", .{ i, pixmap_format });
+        if (options.setup_listener) |setup_listener| if (setup_listener.pixmapFormat) |f| try f(setup_listener.user_data, pixmap_format);
     }
 
     var root_screen: Screen = undefined;
@@ -91,18 +109,16 @@ pub fn init(io: std.Io, reader: *std.Io.Reader, writer: *std.Io.Writer, options:
         const screen = try reader.takeStruct(Screen, options.endian);
         if (i == 0) root_screen = screen;
 
-        std.log.info(
-            "screen {d}: {d}x{d} {d}x{d}mm",
-            .{ i, screen.width, screen.height, screen.width_mm, screen.height_mm },
-        );
+        if (options.setup_listener) |setup_listener| if (setup_listener.screen) |f| try f(setup_listener.user_data, screen);
 
         for (0..screen.depths_count) |_| {
             const depth = try reader.takeStruct(Screen.Depth, options.endian);
-            std.log.info("\tdepth: {any}", .{depth});
+
+            if (options.setup_listener) |setup_listener| if (setup_listener.screenDepth) |f| try f(setup_listener.user_data, screen, depth);
 
             for (0..depth.visuals_count) |_| {
-                const visual_type = try reader.takeStruct(Visual, options.endian);
-                std.log.info("\t\tvisual: {any}", .{visual_type});
+                const visual = try reader.takeStruct(Visual, options.endian);
+                if (options.setup_listener) |setup_listener| if (setup_listener.screenDepthVisual) |f| try f(setup_listener.user_data, screen, depth, visual);
             }
         }
     }

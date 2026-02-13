@@ -2,7 +2,7 @@ const std = @import("std");
 const protocol = @import("protocol.zig");
 const Client = @import("Client.zig");
 const Atom = @import("atom.zig").Atom;
-const Window = @import("root.zig").Window;
+const Window = @import("window.zig").Window;
 const Format = @import("root.zig").Format;
 
 pub const Event = union(Tag) {
@@ -441,12 +441,12 @@ pub const Event = union(Tag) {
     };
 
     pub const ClientMessage = extern struct {
-        header: Header,
+        response_type: Tag,
+        format: Format = .@"32", // usually 32
+        sequence: u16 = 0, // ignored for SendEvent
         window: Window,
         type: Atom,
-        format: Format,
         data: [20]u8, // raw client data
-
     };
 
     pub const MappingNotify = extern struct {
@@ -520,18 +520,20 @@ pub const Event = union(Tag) {
 
     pub fn next(client: Client) !?@This() {
         const stream_reader: *std.Io.net.Stream.Reader = @fieldParentPtr("interface", client.reader);
-        var pfd = [_]std.posix.pollfd{.{
+        var poll_fds = [_]std.posix.pollfd{.{
             .fd = stream_reader.stream.socket.handle,
             .events = std.posix.POLL.IN,
             .revents = 0,
         }};
+        const poll_fd = poll_fds[0];
 
-        const n = try std.posix.poll(&pfd, 1);
+        const n = try std.posix.poll(&poll_fds, 1);
         if (n == 0) return null;
 
-        if (pfd[0].revents & std.posix.POLL.IN == 0)
-            if ((pfd[0].revents & std.posix.POLL.ERR) != 0) return .close;
-        if ((pfd[0].revents & std.posix.POLL.HUP) != 0) return .close;
+        if ((poll_fd.revents & std.posix.POLL.IN) == 0)
+            if ((poll_fd.revents & std.posix.POLL.ERR) != 0) return .close;
+
+        if ((poll_fd.revents & std.posix.POLL.HUP) != 0) return .close;
 
         client.reader.tossBuffered();
         _ = client.reader.fill(32) catch |err| return switch (err) {
@@ -579,5 +581,33 @@ pub const Event = union(Tag) {
             _, .non_standard => .{ .non_standard = try client.reader.takeStruct(NonStandard, client.endian) },
             .close => .close,
         };
+    }
+
+    pub fn send(client: Client, window: Window, propogate: bool, event: @This()) !void {
+        const request: protocol.event.Send = .{
+            .header = .{
+                .opcode = .send_event,
+                .detail = @intFromBool(propogate),
+                .length = 11,
+            },
+            .destination = window,
+            .event_mask = .all,
+        };
+        const atom: Atom = try .intern(Client, false, Atom.wm_protocols);
+        try client.writer.writeStruct(request, client.endian);
+        switch (event) {
+            inline else => |inner| {
+                const payload: ClientMessage = ClientMessage{
+                    .response_type = std.meta.activeTag(event),
+                    .format = .@"32",
+                    .window = window,
+                    .type = atom,
+                    .data = std.mem.toBytes(inner),
+                };
+
+                try client.writer.writeStruct(payload, client.endian);
+            },
+        }
+        try client.writer.flush();
     }
 };

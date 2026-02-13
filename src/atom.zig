@@ -77,7 +77,18 @@ pub const Atom = enum(u32) {
     pub const clipboard = "CLIPBOARD";
     pub const targets = "TARGETS";
     pub const utf8_string = "UTF8_STRING";
-    pub const net_wm_name = "_NET_WM_NAME";
+    pub const wm_protocols = "WM_PROTOCOLS";
+    pub const wm_delete_window = "wm_delete_window";
+
+    /// EWMH
+    pub const net_wm = struct {
+        pub const name = "_NET_WM_NAME";
+        pub const state = "_NET_WM_STATE";
+        pub const window_type = "_NET_WM_WINDOW_TYPE";
+        pub const ive_window = "_NET_ACTIVE_WINDOW";
+        pub const desktop = "_NET_WM_DESKTOP";
+        pub const icon = "_NET_WM_ICON";
+    };
 
     pub fn intern(client: Client, only_if_exists: bool, name: []const u8) !@This() {
         const padded_name_len = (name.len + 3) & ~@as(usize, 3);
@@ -93,14 +104,11 @@ pub const Atom = enum(u32) {
 
         try client.writer.writeStruct(request, client.endian);
         try client.writer.writeAll(name);
-        client.writer.end += (4 - (client.writer.end % 4)) % 4; // Padding
+        _ = try client.writer.splatByte(0, (4 - (name.len % 4)) % 4); // Padding
 
         try client.writer.flush();
 
         const reply = try client.reader.takeStruct(protocol.atom.intern.Reply, client.endian);
-        std.debug.print("reply: {any}\n", .{reply});
-
-        std.debug.print("found atom: {s} = {d}\n", .{ name, reply.atom });
         if (reply.header.response_type != .reply) return error.InvalidResponseType;
 
         return reply.atom;

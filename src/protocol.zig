@@ -1,5 +1,6 @@
 const Atom = @import("atom.zig").Atom;
-const Window = @import("root.zig").Window;
+const Event = @import("event.zig").Event;
+const Window = @import("window.zig").Window;
 const Visual = @import("root.zig").Visual;
 const GContext = @import("root.zig").GContext;
 const Drawable = @import("root.zig").Drawable;
@@ -309,6 +310,15 @@ pub const window = struct {
         y: i16,
         width: u16,
         height: u16,
+    };
+};
+
+pub const event = struct {
+    pub const Send = extern struct {
+        // .detail = propagate
+        header: RequestHeader,
+        destination: Window,
+        event_mask: Event.Mask,
     };
 };
 
