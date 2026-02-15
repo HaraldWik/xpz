@@ -1,33 +1,17 @@
 const std = @import("std");
 const xpz = @import("xpz");
+const glx = @import("xpz").Extension.glx;
 
-const title: []const u8 = "Hello, X 🔥!";
+const title: []const u8 = "OpenGL (GLX)";
 
-const colors: []const u32 = &.{
-    0x00c2185b,
-    0x00ff185b,
-    0x00c2bb5b,
-    0x00cc785b,
-};
+pub fn chooseVisual(user_data: ?*anyopaque, screen: xpz.Screen, depth: xpz.Screen.Depth, visual: xpz.Visual) !void {
+    _ = screen;
+    if (depth.depth != 24) return;
+    if (visual.class != .true_color) return;
 
-pub const setup_listener = struct {
-    pub fn vendor(user_data: ?*anyopaque, name: []const u8) !void {
-        _ = user_data;
-        std.log.info("vendor: {s}", .{name});
-    }
-
-    pub fn currentScreen(user_data: ?*anyopaque, screen: xpz.Screen) !void {
-        _ = user_data;
-        std.log.info("screen: {d}, size: {d}x{d}, real_size: {d}x{d}mm, visual_id: {d}", .{
-            @intFromEnum(screen.window),
-            screen.width,
-            screen.height,
-            screen.width_mm,
-            screen.height_mm,
-            @intFromEnum(screen.visual_id),
-        });
-    }
-};
+    const chosen_visual: *xpz.Visual = @ptrCast(@alignCast(user_data.?));
+    chosen_visual.* = visual;
+}
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
@@ -44,11 +28,12 @@ pub fn main(init: std.process.Init) !void {
     var stream_writer = stream.writer(io, &stream_writer_buffer);
     const writer = &stream_writer.interface;
 
+    var visual: xpz.Visual = std.mem.zeroes(xpz.Visual);
     const client: xpz.Client = try .init(io, reader, writer, xpz.Client.Options{
         .auth = .{ .mit_magic_cookie_1 = .{ .xauthority = init.minimal.environ.getPosix(xpz.Client.Auth.@"MIT-MAGIC-COOKIE-1".XAUTHORITY).? } },
         .setup_listener = .{
-            .vendor = setup_listener.vendor,
-            .screen = setup_listener.currentScreen,
+            .user_data = &visual,
+            .screenDepthVisual = chooseVisual,
         },
     });
 
@@ -56,24 +41,42 @@ pub fn main(init: std.process.Init) !void {
     const net_wm_name: xpz.Atom = try .intern(client, false, xpz.Atom.net_wm.name);
     const utf8_string: xpz.Atom = try .intern(client, false, xpz.Atom.utf8_string);
 
-    const window: xpz.Window = client.generateId(xpz.Window, 0);
+    const glx_info = try xpz.Extension.query(client, .GLX) orelse return error.UnsupportedExtension;
+
+    const version = try glx.queryVersion(client, glx_info);
+    std.log.info("glx version {any}", .{version});
+
+    // const attribute_list: []const glx.Attribute = &.{
+    //     .rgba,
+    //     .double_buffer,
+    //     .depth_size,
+    //     @enumFromInt(24),
+    //     .stencil_size,
+    //     @enumFromInt(8),
+    //     .none,
+    // };
+    // // const visual = x11.glXChooseVisual(display, screen, &attribute_list) orelse return error.ChooseVisual;
+    // const visual = try glx.chooseVisual(client, glx_info, client.root_screen, attribute_list);
+    // _ = visual;
+
+    const colormap: xpz.Colormap = client.generateId(xpz.Colormap, 0);
+    try colormap.create(client, client.root_screen, visual.id, false);
+
+    const window: xpz.Window = client.generateId(xpz.Window, 1);
     try window.create(client, .{
         .parent = client.root_screen.window,
         .width = 600,
         .height = 300,
         .border_width = 1,
-        .visual_id = client.root_screen.visual_id,
+        .visual_id = visual.id,
         .attributes = .{
-            .background_pixel = colors[2], // ARGB color
-            // .events = .all,
+            .colormap = colormap,
             .events = .{
                 .exposure = true,
                 .key_press = true,
                 .key_release = true,
                 .keymap_state = true,
                 .focus_change = true,
-                .button_press = true,
-                .button_release = true,
             },
         },
     });
@@ -85,24 +88,21 @@ pub fn main(init: std.process.Init) !void {
     try window.map(client);
     try client.writer.flush();
 
+    const glx_context: glx.Context = client.generateId(glx.Context, 2);
+    try glx_context.create(client, glx_info, visual.id, client.root_screen);
+    const glx_context_tag = try glx_context.makeCurrent(client, glx_info, .{ .window = window }, client.root_screen);
+
     main_loop: while (true) {
         while (try xpz.Event.next(client)) |event| switch (event) {
-            .close => {
-                std.log.info("close", .{});
-                break :main_loop;
-            },
+            .close => break :main_loop,
             .expose => |expose| std.log.info("resize: {d}x{d}", .{ expose.width, expose.height }),
             .key_press, .key_release => |key| {
                 const keycode = key.header.detail; // This is the hardware key, so its diffrent on diffrent platforms
                 std.log.info("pressed key: ({c}) {d}", .{ if (std.ascii.isPrint(keycode)) keycode else '?', keycode });
             },
-            .button_press, .button_release => |button| {
-                std.log.info("{t}: {t}", .{ event, @as(xpz.Event.Button.Type, @enumFromInt(button.header.detail)) });
-            },
-            .keymap_notify => |map| {
-                std.log.info("keymap_notify: {d} {any}", .{ map.detail, map.keys });
-            },
-            else => |event_type| std.log.info("{t}", .{event_type}),
+            else => {},
         };
+
+        try glx.swapBuffers(client, glx_info, .{ .window = window }, glx_context_tag);
     }
 }

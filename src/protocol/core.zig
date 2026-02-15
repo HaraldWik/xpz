@@ -1,10 +1,12 @@
-const Atom = @import("atom.zig").Atom;
-const Event = @import("event.zig").Event;
-const Window = @import("window.zig").Window;
-const Visual = @import("root.zig").Visual;
-const GContext = @import("root.zig").GContext;
-const Drawable = @import("root.zig").Drawable;
-const Format = @import("root.zig").Format;
+const Version = @import("protocol.zig").common.Version;
+const Atom = @import("../atom.zig").Atom;
+const Event = @import("../event.zig").Event;
+const Window = @import("../window.zig").Window;
+const Visual = @import("../root.zig").Visual;
+const GContext = @import("../root.zig").GContext;
+const Colormap = @import("../root.zig").Colormap;
+const Drawable = @import("../root.zig").Drawable;
+const Format = @import("../root.zig").Format;
 
 pub const RequestHeader = extern struct {
     pub const Opcode = enum(u8) {
@@ -153,8 +155,7 @@ pub const setup = struct {
     pub const Request = extern struct {
         byte_order: u8, // 'l' or 'B'
         pad0: u8 = undefined,
-        protocol_major: u16,
-        protocol_minor: u16,
+        protocol_version: Version,
         auth_name_len: u16,
         auth_data_len: u16,
         pad1: u16 = undefined,
@@ -165,8 +166,7 @@ pub const setup = struct {
     pub const Reply = extern struct {
         status: ReplyHeader.ResponseType,
         pad0: u8,
-        protocol_major_version: u16,
-        protocol_minor_version: u16,
+        protocol_version: Version,
         length: u16,
         release_number: u32,
         resource_id_base: u32,
@@ -283,7 +283,7 @@ pub const window = struct {
     };
 
     pub const ChangeProperty = extern struct {
-        // detail = ChangeMode,
+        // .detail = ChangeMode,
         header: RequestHeader,
         window: Window,
         property: Atom,
@@ -309,6 +309,65 @@ pub const window = struct {
         y: i16,
         width: u16,
         height: u16,
+    };
+};
+
+pub const colormap = struct {
+    pub const Create = extern struct {
+        /// .detail =  AllocNone = 0, AllocAll = 1
+        header: RequestHeader,
+        colormap: Colormap,
+        window: Window,
+        visual_id: Visual.Id,
+    };
+    pub const Free = extern struct {
+        header: RequestHeader = .{
+            .opcode = .free_colormap,
+            .length = 2,
+        },
+        colormap: Colormap,
+    };
+
+    pub const CopyAndFree = extern struct {
+        header: RequestHeader = .{
+            .opcode = .copy_colormap_and_free,
+            .length = 3,
+        },
+
+        dest: Colormap,
+        src: Colormap,
+    };
+
+    pub const Install = extern struct {
+        header: RequestHeader = .{
+            .opcode = .free_colormap,
+            .length = 2,
+        },
+        colormap: Colormap,
+    };
+
+    pub const Uninstall = extern struct {
+        header: RequestHeader = .{
+            .opcode = .uninstall_colormap,
+            .detail = 2,
+        },
+        colormap: Colormap,
+    };
+
+    pub const list_installed = struct {
+        pub const Request = extern struct {
+            header: RequestHeader = .{
+                .opcode = .list_installed_colormaps,
+                .length = 2,
+            },
+            window: Window,
+        };
+
+        pub const Reply = extern struct {
+            header: ReplyHeader,
+            colormap_count: u16,
+            pad0: [22]u8,
+        };
     };
 };
 

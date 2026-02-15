@@ -1,5 +1,5 @@
 const std = @import("std");
-const protocol = @import("protocol.zig");
+const protocol = @import("protocol/protocol.zig");
 const Client = @import("Client.zig");
 const Atom = @import("atom.zig").Atom;
 const Event = @import("event.zig").Event;
@@ -198,7 +198,7 @@ pub const Window = enum(u32) {
     };
 
     pub fn create(self: @This(), client: Client, config: Config) !void {
-        const request: protocol.window.Create = .{
+        const request: protocol.core.window.Create = .{
             .header = .{
                 .opcode = .create_window,
                 .length = 8 + @as(u16, @intCast(config.attributes.count())),
@@ -219,18 +219,18 @@ pub const Window = enum(u32) {
     }
 
     pub fn destroy(self: @This(), client: Client) void {
-        const request: protocol.window.Destroy = .{ .window = self };
+        const request: protocol.core.window.Destroy = .{ .window = self };
         client.writer.writeStruct(request, client.endian) catch {};
         client.writer.flush() catch return;
     }
 
     pub fn map(self: @This(), client: Client) !void {
-        const request: protocol.window.Map = .{ .window = self };
+        const request: protocol.core.window.Map = .{ .window = self };
         try client.writer.writeStruct(request, client.endian);
     }
 
     pub fn changeAttributes(self: @This(), client: Client, attributes: Attributes) !void {
-        const request: protocol.window.ChangeAttributes = .{
+        const request: protocol.core.window.ChangeAttributes = .{
             .header = .{
                 .opcode = .change_window_attributes,
                 .length = @intCast(3 + attributes.count()),
@@ -249,7 +249,7 @@ pub const Window = enum(u32) {
         width: u16 = 0,
         height: u16 = 0,
     }) !void {
-        const request: protocol.window.ClearArea = .{
+        const request: protocol.core.window.ClearArea = .{
             .header = .{
                 .opcode = .clear_area,
                 .length = 4,
@@ -266,7 +266,7 @@ pub const Window = enum(u32) {
         try client.writer.flush();
     }
 
-    pub fn changeProperty(self: @This(), client: Client, mode: protocol.window.ChangeProperty.ChangeMode, property: Atom, @"type": Atom, format: Format, data: []const u8) !void {
+    pub fn changeProperty(self: @This(), client: Client, mode: protocol.core.window.ChangeProperty.ChangeMode, property: Atom, @"type": Atom, format: Format, data: []const u8) !void {
         if (format == .@"16" and data.len % 2 != 0)
             return error.InvalidLength;
         if (format == .@"32" and data.len % 4 != 0)
@@ -279,9 +279,9 @@ pub const Window = enum(u32) {
         };
 
         const padded_len = (data.len + 3) & ~@as(usize, 3);
-        const total_bytes = @sizeOf(protocol.window.ChangeProperty) + 4 + padded_len;
+        const total_bytes = @sizeOf(protocol.core.window.ChangeProperty) + 4 + padded_len;
 
-        const request: protocol.window.ChangeProperty = .{
+        const request: protocol.core.window.ChangeProperty = .{
             .header = .{
                 .opcode = .change_property,
                 .detail = @intFromEnum(mode),

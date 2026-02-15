@@ -1,5 +1,5 @@
 const std = @import("std");
-const protocol = @import("protocol.zig");
+const protocol = @import("protocol/protocol.zig");
 const PixmapFormat = @import("root.zig").PixmapFormat;
 const Screen = @import("root.zig").Screen;
 const Visual = @import("root.zig").Visual;
@@ -12,7 +12,7 @@ writer: *std.Io.Writer,
 endian: std.builtin.Endian,
 
 // setup reply
-setup: protocol.setup.Reply,
+setup: protocol.core.setup.Reply,
 
 root_screen: Screen,
 
@@ -35,8 +35,7 @@ pub const SetupListener = struct {
 
 pub const Options = struct {
     endian: std.builtin.Endian = .native,
-    protocol_major: u16 = 11,
-    protocol_minor: u16 = 0,
+    protocol_version: protocol.common.Version = .{ .major = 11, .minor = 0 },
     auth: Auth,
     setup_listener: ?SetupListener = null,
 };
@@ -53,13 +52,12 @@ pub fn init(io: std.Io, reader: *std.Io.Reader, writer: *std.Io.Writer, options:
         .custom => |auth| auth.data,
     };
 
-    const request: protocol.setup.Request = .{
+    const request: protocol.core.setup.Request = .{
         .byte_order = switch (options.endian) {
             .big => 'B',
             .little => 'l',
         },
-        .protocol_major = options.protocol_major,
-        .protocol_minor = options.protocol_minor,
+        .protocol_version = options.protocol_version,
         .auth_name_len = @intCast(auth_name.len),
         .auth_data_len = @intCast(auth_data.len),
     };
@@ -75,7 +73,7 @@ pub fn init(io: std.Io, reader: *std.Io.Reader, writer: *std.Io.Writer, options:
     // Read setup
     try reader.fillMore();
 
-    const status: protocol.ReplyHeader.ResponseType = @enumFromInt(try reader.peekInt(u8, options.endian));
+    const status: protocol.core.ReplyHeader.ResponseType = @enumFromInt(try reader.peekInt(u8, options.endian));
     switch (status) {
         .reply => {}, // Success
         .err => {
@@ -93,7 +91,9 @@ pub fn init(io: std.Io, reader: *std.Io.Reader, writer: *std.Io.Writer, options:
         _ => {},
     }
 
-    const reply = try reader.takeStruct(protocol.setup.Reply, options.endian);
+    const reply = try reader.takeStruct(protocol.core.setup.Reply, options.endian);
+    std.debug.assert(options.protocol_version.major <= reply.protocol_version.major);
+    std.debug.assert(options.protocol_version.minor <= reply.protocol_version.minor);
 
     const vendor = std.mem.trimEnd(u8, try reader.take(reply.vendor_len), &.{0});
     if (options.setup_listener) |setup_listener| if (setup_listener.vendor) |f| try f(setup_listener.user_data, vendor);
@@ -146,36 +146,6 @@ pub fn generateId(self: @This(), comptime T: type, resource_index: u32) T {
         },
         else => @compileError("invalid type given to nextId"),
     }
-}
-
-pub fn checkError(self: @This()) !protocol.ReplyHeader.ResponseType {
-    const response_type: protocol.ReplyHeader.ResponseType = @enumFromInt(try self.reader.peekInt(u8, self.endian));
-
-    if (response_type == .err) return switch (try self.reader.peekInt(u8, self.endian)) {
-        0 => return response_type,
-        1 => error.Request,
-        2 => error.Value,
-        3 => error.Window,
-        4 => error.Pixmap,
-        5 => error.Atom,
-        6 => error.Cursor,
-        7 => error.Font,
-        8 => error.Match,
-        9 => error.Drawable,
-        10 => error.Access,
-        11 => error.Alloc,
-        12 => error.Colormap,
-        13 => error.GC,
-        14 => error.IDChoice,
-        15 => error.Name,
-        16 => error.Length,
-        17 => error.Implementation,
-        else => |code| {
-            std.log.err("unknown error code: {d}", .{code});
-            return error.Unknown;
-        },
-    };
-    return response_type;
 }
 
 /// "xhost +local:" removes the need to authenticate

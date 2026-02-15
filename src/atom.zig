@@ -1,5 +1,5 @@
 const std = @import("std");
-const protocol = @import("protocol.zig");
+const protocol = @import("protocol/protocol.zig");
 const Client = @import("Client.zig");
 
 pub const Atom = enum(u32) {
@@ -155,11 +155,11 @@ pub const Atom = enum(u32) {
     pub fn intern(client: Client, only_if_exists: bool, name: []const u8) !@This() {
         const padded_name_len = (name.len + 3) & ~@as(usize, 3);
 
-        const request: protocol.atom.intern.Request = .{
+        const request: protocol.core.atom.intern.Request = .{
             .header = .{
                 .opcode = .intern_atom,
                 .detail = @intFromBool(only_if_exists),
-                .length = @intCast((@sizeOf(protocol.atom.intern.Request) + padded_name_len) / 4),
+                .length = @intCast((@sizeOf(protocol.core.atom.intern.Request) + padded_name_len) / 4),
             },
             .name_len = @intCast(name.len),
         };
@@ -170,7 +170,7 @@ pub const Atom = enum(u32) {
 
         try client.writer.flush();
 
-        const reply = try client.reader.takeStruct(protocol.atom.intern.Reply, client.endian);
+        const reply = try client.reader.takeStruct(protocol.core.atom.intern.Reply, client.endian);
         if (reply.header.response_type != .reply) return error.InvalidResponseType;
 
         return reply.atom;

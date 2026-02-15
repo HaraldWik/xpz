@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const protocol = @import("protocol.zig");
+pub const protocol = @import("protocol/protocol.zig");
 
 pub const Client = @import("Client.zig");
 pub const Atom = @import("atom.zig").Atom;
@@ -40,14 +40,14 @@ pub const Screen = extern struct {
     };
 };
 
-pub const Drawable = union {
+pub const Drawable = extern union {
     window: Window,
     pixmap: Window,
 };
 
 pub const Visual = extern struct {
     id: Id,
-    class: Class,
+    class: Class(u8),
     bits_per_rgb_value: u8,
     colormap_entries: u16,
     red_mask: u32,
@@ -59,14 +59,31 @@ pub const Visual = extern struct {
         _,
     };
 
-    pub const Class = enum(u8) {
-        static_grey = 0,
-        grey_scale = 1,
-        static_color = 2,
-        pseudo_color = 3,
-        true_color = 4,
-        direct_color = 5,
-        _, // Non standard
+    pub fn Class(T: type) type {
+        return enum(T) {
+            static_grey = 0,
+            grey_scale = 1,
+            static_color = 2,
+            pseudo_color = 3,
+            true_color = 4,
+            direct_color = 5,
+            _, // Non standard
+        };
+    }
+
+    pub const Info = struct {
+        visual: ?*Visual,
+        visual_id: Id,
+        /// which screen this visual is on
+        screen_index: u32,
+        /// bits per pixel (color depth)
+        depth: u32,
+        class: Class(u32),
+        red_mask: u64,
+        green_mask: u64,
+        blue_mask: u64,
+        colormap_size: i32,
+        bits_per_rgb: i32,
     };
 };
 
@@ -76,6 +93,54 @@ pub const GContext = enum(u32) {
 
 pub const Colormap = enum(u32) {
     _,
+
+    pub fn create(self: @This(), client: Client, screen: Screen, visual_id: Visual.Id, alloc: bool) !void {
+        const request: protocol.core.colormap.Create = .{
+            .header = .{
+                .opcode = .create_colormap,
+                .detail = @intFromBool(alloc),
+                .length = @sizeOf(protocol.core.colormap.Create) + 3,
+            },
+            .colormap = self,
+            .window = screen.window,
+            .visual_id = visual_id,
+        };
+        try client.writer.writeStruct(request, client.endian);
+        try client.writer.flush();
+    }
+
+    pub fn free(self: @This(), client: Client) void {
+        const request: protocol.core.colormap.Free = .{
+            .colormap = self,
+        };
+        client.writer.writeStruct(request, client.endian) catch {};
+        client.writer.flush() catch {};
+    }
+
+    pub fn copyAndFree(self: @This(), client: Client, dest: @This()) !void {
+        const request: protocol.core.colormap.CopyAndFree = .{
+            .src = self,
+            .dest = dest,
+        };
+        try client.writer.writeStruct(request, client.endian);
+        try client.writer.flush();
+    }
+
+    pub fn install(self: @This(), client: Client) !void {
+        const request: protocol.core.colormap.Install = .{
+            .colormap = self,
+        };
+        try client.writer.writeStruct(request, client.endian);
+        try client.writer.flush();
+    }
+
+    pub fn uninstall(self: @This(), client: Client) !void {
+        const request: protocol.core.colormap.Uninstall = .{
+            .colormap = self,
+        };
+        try client.writer.writeStruct(request, client.endian);
+        try client.writer.flush();
+    }
 };
 
 pub const Cursor = enum(u32) {
@@ -89,40 +154,64 @@ pub const Format = enum(u8) {
 };
 
 pub const Extension = enum(u8) {
-    GLX,
-    RANDR,
-    XInputExtension,
+    @"BIG-REQUESTS",
     Composite,
+    DAMAGE,
+    DPMS,
+    DRAWS,
+    GLX,
     @"MIT-SHM",
-    _,
+    Present,
+    RANDR,
+    RECORD,
+    RENDER,
+    SECURITY,
+    SHAPE,
+    SYNC,
+    @"X-Resource",
+    XFIXES,
+    @"XFree86-DGA",
+    @"XFree86-VidMode",
+    XInputExtension,
+    XTEST,
+    @"XC-MISC",
+    XCMISC,
+    XEVIE,
+
+    pub const glx = @import("glx.zig");
 
     pub const Info = struct {
         major_opcode: u8,
         first_event: u8,
-        num_events: ?u8,
         first_error: u8,
     };
 
-    pub fn query(client: Client, extension: Extension) !protocol.extension.query.Reply {
-        const name: []const u8 = @tagName(extension);
+    /// Returns null if extension is not present
+    pub fn query(client: Client, extension: @This()) !?Info {
+        return queryWithSlice(client, @tagName(extension));
+    }
 
-        const request: protocol.extension.query.Request = .{
+    /// Returns null if extension is not present
+    pub fn queryWithSlice(client: Client, extension: []const u8) !?Info {
+        const request: protocol.core.extension.query.Request = .{
             .header = .{
                 .opcode = .query_extension,
-                .length = @intCast((@sizeOf(protocol.extension.query.Request) + ((name.len + 3) & ~@as(usize, 3))) / 4),
+                .length = @intCast((@sizeOf(protocol.core.extension.query.Request) + ((extension.len + 3) & ~@as(usize, 3))) / 4),
             },
-            .name_len = @intCast(name.len),
+            .name_len = @intCast(extension.len),
         };
         try client.writer.writeStruct(request, client.endian);
-        try client.writer.writeAll(name);
+        try client.writer.writeAll(extension);
         client.writer.end += (4 - (client.writer.end % 4)) % 4; // Padding
         try client.writer.flush();
 
         try client.reader.fillMore();
-        const reply = try client.reader.takeStruct(protocol.extension.query.Reply, client.endian);
+        const reply = try client.reader.takeStruct(protocol.core.extension.query.Reply, client.endian);
 
-        std.debug.print("{s} = {d}\n", .{ name, reply.major_opcode });
-
-        return reply;
+        return if (reply.present) .{
+            .major_opcode = reply.major_opcode,
+            .first_event = reply.first_event,
+            .first_error = reply.first_error,
+        } else null;
     }
 };

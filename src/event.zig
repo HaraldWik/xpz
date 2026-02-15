@@ -1,5 +1,5 @@
 const std = @import("std");
-const protocol = @import("protocol.zig");
+const protocol = @import("protocol/protocol.zig");
 const Client = @import("Client.zig");
 const Atom = @import("atom.zig").Atom;
 const Window = @import("window.zig").Window;
@@ -83,7 +83,7 @@ pub const Event = union(Tag) {
     };
 
     pub const Header = extern struct {
-        response_type: protocol.ReplyHeader.ResponseType,
+        response_type: protocol.core.ReplyHeader.ResponseType,
         detail: u8,
         sequence: u16,
     };
@@ -208,7 +208,7 @@ pub const Event = union(Tag) {
     };
 
     pub const KeymapNotify = extern struct {
-        response_type: protocol.ReplyHeader.ResponseType,
+        response_type: protocol.core.ReplyHeader.ResponseType,
         detail: u8,
         keys: [30]u8,
     };
@@ -540,7 +540,7 @@ pub const Event = union(Tag) {
             error.EndOfStream => .close,
             else => err,
         };
-        const response_type = try client.checkError();
+        const response_type = try checkError(client);
         if (response_type == .reply) return null;
 
         return switch (@as(Tag, @enumFromInt(@intFromEnum(response_type)))) {
@@ -584,7 +584,7 @@ pub const Event = union(Tag) {
     }
 
     pub fn send(client: Client, window: Window, propogate: bool, event: @This()) !void {
-        const request: protocol.event.Send = .{
+        const request: protocol.core.event.Send = .{
             .header = .{
                 .opcode = .send_event,
                 .detail = @intFromBool(propogate),
@@ -593,7 +593,7 @@ pub const Event = union(Tag) {
             .destination = window,
             .event_mask = .all,
         };
-        const atom: Atom = try .intern(Client, false, Atom.wm_protocols);
+        const atom: Atom = try .intern(Client, false, Atom.wm.protocols);
         try client.writer.writeStruct(request, client.endian);
         switch (event) {
             inline else => |inner| {
@@ -611,3 +611,33 @@ pub const Event = union(Tag) {
         try client.writer.flush();
     }
 };
+
+fn checkError(client: Client) !protocol.core.ReplyHeader.ResponseType {
+    const response_type: protocol.core.ReplyHeader.ResponseType = @enumFromInt(try client.reader.peekInt(u8, client.endian));
+
+    if (response_type == .err) return switch (try client.reader.peekInt(u8, client.endian)) {
+        0 => return response_type,
+        1 => error.Request,
+        2 => error.Value,
+        3 => error.Window,
+        4 => error.Pixmap,
+        5 => error.Atom,
+        6 => error.Cursor,
+        7 => error.Font,
+        8 => error.Match,
+        9 => error.Drawable,
+        10 => error.Access,
+        11 => error.Alloc,
+        12 => error.Colormap,
+        13 => error.GC,
+        14 => error.IDChoice,
+        15 => error.Name,
+        16 => error.Length,
+        17 => error.Implementation,
+        else => |code| {
+            std.log.err("unknown error code: {d}", .{code});
+            return error.Unknown;
+        },
+    };
+    return response_type;
+}
