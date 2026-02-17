@@ -1,6 +1,8 @@
 const std = @import("std");
 
 pub const protocol = @import("protocol/protocol.zig");
+pub const glx = @import("glx.zig");
+pub const randr = @import("randr.zig");
 
 pub const Client = @import("Client.zig");
 pub const Atom = @import("atom.zig").Atom;
@@ -178,8 +180,6 @@ pub const Extension = enum(u8) {
     XCMISC,
     XEVIE,
 
-    pub const glx = @import("glx.zig");
-
     pub const Info = struct {
         major_opcode: u8,
         first_event: u8,
@@ -196,13 +196,13 @@ pub const Extension = enum(u8) {
         const request: protocol.core.extension.query.Request = .{
             .header = .{
                 .opcode = .query_extension,
-                .length = @intCast((@sizeOf(protocol.core.extension.query.Request) + ((extension.len + 3) & ~@as(usize, 3))) / 4),
+                .length = .fromWords(@intCast((@sizeOf(protocol.core.extension.query.Request) + ((extension.len + 3) & ~@as(usize, 3))) / 4)),
             },
             .name_len = @intCast(extension.len),
         };
         try client.writer.writeStruct(request, client.endian);
         try client.writer.writeAll(extension);
-        client.writer.end += (4 - (client.writer.end % 4)) % 4; // Padding
+        _ = try client.writer.splatByte(0, (4 - (client.writer.end % 4)) % 4); // Padding
         try client.writer.flush();
 
         try client.reader.fillMore();

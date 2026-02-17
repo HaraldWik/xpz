@@ -1,4 +1,4 @@
-const Version = @import("protocol.zig").common.Version;
+const common = @import("protocol.zig").common;
 const Atom = @import("../atom.zig").Atom;
 const Event = @import("../event.zig").Event;
 const Window = @import("../window.zig").Window;
@@ -134,7 +134,7 @@ pub const RequestHeader = extern struct {
 
     opcode: Opcode,
     detail: u8 = 0,
-    length: u16,
+    length: common.Length,
 };
 
 pub const ReplyHeader = extern struct {
@@ -155,7 +155,7 @@ pub const setup = struct {
     pub const Request = extern struct {
         byte_order: u8, // 'l' or 'B'
         pad0: u8 = undefined,
-        protocol_version: Version,
+        protocol_version: common.Version,
         auth_name_len: u16,
         auth_data_len: u16,
         pad1: u16 = undefined,
@@ -166,7 +166,7 @@ pub const setup = struct {
     pub const Reply = extern struct {
         status: ReplyHeader.ResponseType,
         pad0: u8,
-        protocol_version: Version,
+        protocol_version: common.Version,
         length: u16,
         release_number: u32,
         resource_id_base: u32,
@@ -183,14 +183,6 @@ pub const setup = struct {
         min_keycode: u8,
         max_keycode: u8,
         pad1: u32,
-    };
-
-    pub const Failed = struct {
-        status: u8,
-        reason_len: u8,
-        protocol_major_version: u16,
-        protocol_minor_version: u16,
-        length: u16,
     };
 
     pub const PixmapFormat = extern struct {
@@ -213,7 +205,23 @@ pub const atom = struct {
         pub const Reply = extern struct {
             header: ReplyHeader,
             atom: Atom,
-            pad0: [20]u8,
+            pad0: [20]u8 = undefined,
+        };
+    };
+
+    pub const get_name = struct {
+        pub const Request = extern struct {
+            header: RequestHeader = .{
+                .opcode = .get_atom_name,
+                .length = .fromBytes(@sizeOf(@This())),
+            },
+            atom: Atom,
+        };
+
+        pub const Reply = extern struct {
+            header: ReplyHeader,
+            name_len: u32,
+            pad0: [24]u8,
         };
     };
 };
@@ -222,7 +230,7 @@ pub const window = struct {
     pub const Create = extern struct {
         header: RequestHeader = .{
             .opcode = .create_window,
-            .length = 0, // EXAMPLE: .length = 8 + flag_count;
+            .length = .fromWords(0), // .length = 8 + flag_count;
         },
         window: Window,
         parent: Window, // root window or parent
@@ -245,7 +253,7 @@ pub const window = struct {
     pub const Destroy = extern struct {
         header: RequestHeader = .{
             .opcode = .destroy_window,
-            .length = @sizeOf(@This()) / 4,
+            .length = .fromBytes(@sizeOf(@This())),
         },
         window: Window,
     };
@@ -253,7 +261,7 @@ pub const window = struct {
     pub const Map = extern struct {
         header: RequestHeader = .{
             .opcode = .map_window,
-            .length = @sizeOf(@This()) / 4,
+            .length = .fromBytes(@sizeOf(@This())),
         },
         window: Window,
     };
@@ -268,7 +276,7 @@ pub const window = struct {
     pub const Kill = extern struct {
         header: RequestHeader = .{
             .opcode = .kill_client,
-            .length = @sizeOf(@This()) / 4,
+            .length = .fromBytes(@sizeOf(@This())),
         },
         window: Window,
     };
@@ -276,7 +284,7 @@ pub const window = struct {
     pub const ChangeAttributes = extern struct {
         header: RequestHeader = .{
             .opcode = .change_window_attributes,
-            .length = 0,
+            .length = .fromWords(0),
         },
         window: Window,
         value_mask: Window.Attributes.Mask,
@@ -301,7 +309,7 @@ pub const window = struct {
     pub const ClearArea = extern struct {
         header: RequestHeader = .{
             .opcode = .clear_area,
-            .length = 4,
+            .length = .fromBytes(@sizeOf(@This())),
         },
         window: Window,
         exposures: bool,
@@ -323,7 +331,7 @@ pub const colormap = struct {
     pub const Free = extern struct {
         header: RequestHeader = .{
             .opcode = .free_colormap,
-            .length = 2,
+            .length = .fromBytes(@sizeOf(@This())),
         },
         colormap: Colormap,
     };
@@ -331,7 +339,7 @@ pub const colormap = struct {
     pub const CopyAndFree = extern struct {
         header: RequestHeader = .{
             .opcode = .copy_colormap_and_free,
-            .length = 3,
+            .length = .fromBytes(@sizeOf(@This())),
         },
 
         dest: Colormap,
@@ -341,7 +349,7 @@ pub const colormap = struct {
     pub const Install = extern struct {
         header: RequestHeader = .{
             .opcode = .free_colormap,
-            .length = 2,
+            .length = .fromBytes(@sizeOf(@This())),
         },
         colormap: Colormap,
     };
@@ -350,6 +358,7 @@ pub const colormap = struct {
         header: RequestHeader = .{
             .opcode = .uninstall_colormap,
             .detail = 2,
+            .length = .fromBytes(@sizeOf(@This())),
         },
         colormap: Colormap,
     };
@@ -358,7 +367,7 @@ pub const colormap = struct {
         pub const Request = extern struct {
             header: RequestHeader = .{
                 .opcode = .list_installed_colormaps,
-                .length = 2,
+                .length = .fromBytes(@sizeOf(@This())),
             },
             window: Window,
         };

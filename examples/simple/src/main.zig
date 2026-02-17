@@ -18,7 +18,7 @@ pub const setup_listener = struct {
 
     pub fn currentScreen(user_data: ?*anyopaque, screen: xpz.Screen) !void {
         _ = user_data;
-        std.log.info("screen: {d}, size: {d}x{d}, real_size: {d}x{d}mm, visual_id: {d}", .{
+        std.log.info("screen: {d}, size: {d}x{d}, physical size: {d}x{d}mm, visual_id: {d}", .{
             @intFromEnum(screen.window),
             screen.width,
             screen.height,
@@ -55,6 +55,9 @@ pub fn main(init: std.process.Init) !void {
     // Atoms must be aquired before window mapping
     const net_wm_name: xpz.Atom = try .intern(client, false, xpz.Atom.net_wm.name);
     const utf8_string: xpz.Atom = try .intern(client, false, xpz.Atom.utf8_string);
+
+    const randr = try xpz.Extension.query(client, .RANDR) orelse return error.RandrUnsupported;
+    try xpz.randr.getMonitors(client, randr, true);
 
     const window: xpz.Window = client.generateId(xpz.Window, 0);
     try window.create(client, .{

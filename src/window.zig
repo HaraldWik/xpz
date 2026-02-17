@@ -201,7 +201,7 @@ pub const Window = enum(u32) {
         const request: protocol.core.window.Create = .{
             .header = .{
                 .opcode = .create_window,
-                .length = 8 + @as(u16, @intCast(config.attributes.count())),
+                .length = .fromWords(8 + @as(u16, @intCast(config.attributes.count()))),
             },
             .window = self,
             .parent = config.parent,
@@ -285,7 +285,7 @@ pub const Window = enum(u32) {
             .header = .{
                 .opcode = .change_property,
                 .detail = @intFromEnum(mode),
-                .length = @intCast(total_bytes / 4),
+                .length = .fromBytes(total_bytes),
             },
             .window = self,
             .property = property,

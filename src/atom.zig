@@ -159,7 +159,7 @@ pub const Atom = enum(u32) {
             .header = .{
                 .opcode = .intern_atom,
                 .detail = @intFromBool(only_if_exists),
-                .length = @intCast((@sizeOf(protocol.core.atom.intern.Request) + padded_name_len) / 4),
+                .length = .fromBytes(@sizeOf(protocol.core.atom.intern.Request) + padded_name_len),
             },
             .name_len = @intCast(name.len),
         };
@@ -174,5 +174,21 @@ pub const Atom = enum(u32) {
         if (reply.header.response_type != .reply) return error.InvalidResponseType;
 
         return reply.atom;
+    }
+
+    /// The returned slice points into the reader buffer and is not guaranteed to be valid after more calls,
+    /// recommended to use allocator.dupe or store it into a buffer
+    pub fn getName(self: @This(), client: Client) ![]const u8 {
+        const request: protocol.core.atom.get_name.Request = .{
+            .atom = self,
+        };
+        try client.writer.writeStruct(request, client.endian);
+        try client.writer.flush();
+
+        try client.reader.fillMore();
+        const reply = try client.reader.takeStruct(protocol.core.atom.get_name.Reply, client.endian);
+        const name = std.mem.trimEnd(u8, try client.reader.take(reply.name_len), &.{0});
+        std.debug.print("atom name: {s}\n", .{name});
+        return name;
     }
 };

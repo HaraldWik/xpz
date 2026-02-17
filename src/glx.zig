@@ -63,7 +63,7 @@ pub const Context = enum(u32) {
             .header = .{
                 .major_opcode = info.major_opcode,
                 .minor_opcode = .create_context,
-                .length = 7,
+                .length = .fromBytes(@sizeOf(protocol.glx.CreateContext)),
             },
             .context = self,
             .visual_id = visual_id,
@@ -81,7 +81,7 @@ pub const Context = enum(u32) {
             .header = .{
                 .major_opcode = info.major_opcode,
                 .minor_opcode = .make_current,
-                .length = 4,
+                .length = .fromBytes(@sizeOf(protocol.glx.make_current.Request)),
             },
             .context = self,
             .drawable = drawable,
@@ -101,7 +101,7 @@ pub fn queryVersion(client: Client, info: Extension.Info) !protocol.common.Versi
         .header = .{
             .major_opcode = info.major_opcode,
             .minor_opcode = .get_version,
-            .length = 2,
+            .length = .fromBytes(@sizeOf(protocol.glx.query_version.Request)),
         },
         .version = supported_client_version, // THe version of glx that the client supports
     };
@@ -117,7 +117,7 @@ pub fn chooseVisual(client: Client, info: Extension.Info, screen: Screen, attrib
         .header = .{
             .major_opcode = info.major_opcode,
             .minor_opcode = .get_visual_configs,
-            .length = @intCast((@sizeOf(protocol.glx.get_visual_configs.Request) + 3) / 4),
+            .length = .fromBytes(@sizeOf(protocol.glx.get_visual_configs.Request) + 3),
         },
         .screen_index = 0,
     };
@@ -168,7 +168,7 @@ pub fn swapBuffers(client: Client, info: Extension.Info, drawable: Drawable, con
         .header = .{
             .major_opcode = info.major_opcode,
             .minor_opcode = .make_current,
-            .length = 3,
+            .length = .fromBytes(@sizeOf(protocol.glx.SwapBuffers)),
         },
         .drawable = drawable,
         .context_tag = context_tag,

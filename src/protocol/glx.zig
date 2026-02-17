@@ -1,5 +1,5 @@
 const core = @import("core.zig");
-const Version = @import("protocol.zig").common.Version;
+const common = @import("protocol.zig").common;
 const Window = @import("../window.zig").Window;
 const Drawable = @import("../root.zig").Drawable;
 const Visual = @import("../root.zig").Visual;
@@ -36,18 +36,18 @@ pub const RequestHeader = extern struct {
 
     major_opcode: u8,
     minor_opcode: Opcode,
-    length: u16,
+    length: common.Length,
 };
 
 pub const query_version = struct {
     pub const Request = extern struct {
         header: RequestHeader,
-        version: Version,
+        version: common.Version,
     };
 
     pub const Reply = extern struct {
         header: core.ReplyHeader,
-        version: Version,
+        version: common.Version,
         pad: [20]u8,
     };
 };
