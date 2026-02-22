@@ -117,8 +117,12 @@ pub const Event = union(Tag) {
         event_x: i16,
         event_y: i16,
         state: ModifierState,
-        keycode: u8, // detail
+        pad0: u8, // originaly keycode
         is_same_screen: bool,
+
+        pub fn code(self: @This()) u8 {
+            return @enumFromInt(self.header.detail);
+        }
     };
 
     pub const Button = extern struct {
@@ -127,12 +131,12 @@ pub const Event = union(Tag) {
         root: Window,
         child: Window,
         time_ms: u32,
+        root_x: i16,
+        root_y: i16,
         x: i16,
         y: i16,
-        x_root: i16,
-        y_root: i16,
         state: ModifierState,
-        button: Type, // Dont use this field, use header.detail
+        pad0: u8, // originaly button
         is_same_screen: u8,
 
         pub const Type = enum(u8) {
@@ -146,6 +150,10 @@ pub const Event = union(Tag) {
             forward = 8, // forward / extra button 1
             backward = 9, // backward / extra button 2
         };
+
+        pub fn button(self: @This()) Type {
+            return @enumFromInt(self.header.detail);
+        }
     };
 
     pub const MotionNotify = extern struct {

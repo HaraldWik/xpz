@@ -100,7 +100,7 @@ pub fn main(init: std.process.Init) !void {
                 std.log.info("pressed key: ({c}) {d}", .{ if (std.ascii.isPrint(keycode)) keycode else '?', keycode });
             },
             .button_press, .button_release => |button| {
-                std.log.info("{t}: {t}", .{ event, @as(xpz.Event.Button.Type, @enumFromInt(button.header.detail)) });
+                std.log.info("{t}: {t}", .{ event, button.button() });
             },
             .keymap_notify => |map| {
                 std.log.info("keymap_notify: {d} {any}", .{ map.detail, map.keys });
