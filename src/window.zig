@@ -1,5 +1,5 @@
 const std = @import("std");
-const protocol = @import("protocol/protocol.zig");
+const protocol = @import("protocol.zig");
 const Client = @import("Client.zig");
 const Atom = @import("atom.zig").Atom;
 const Event = @import("event.zig").Event;

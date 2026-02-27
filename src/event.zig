@@ -1,5 +1,5 @@
 const std = @import("std");
-const protocol = @import("protocol/protocol.zig");
+const protocol = @import("protocol.zig");
 const Client = @import("Client.zig");
 const Atom = @import("atom.zig").Atom;
 const Window = @import("window.zig").Window;
@@ -83,7 +83,7 @@ pub const Event = union(Tag) {
     };
 
     pub const Header = extern struct {
-        response_type: protocol.core.ReplyHeader.ResponseType,
+        response_type: @import("Client.zig").ReplyHeader.ResponseType,
         detail: u8,
         sequence: u16,
     };
@@ -216,7 +216,7 @@ pub const Event = union(Tag) {
     };
 
     pub const KeymapNotify = extern struct {
-        response_type: protocol.core.ReplyHeader.ResponseType,
+        response_type: @import("Client.zig").ReplyHeader.ResponseType,
         detail: u8,
         keys: [30]u8,
     };

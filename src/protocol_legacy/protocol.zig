@@ -36,23 +36,5 @@ pub const common = struct {
 
     pub const Version = extern struct { major: u16, minor: u16 };
 
-    pub const Length = enum(u16) {
-        _,
-
-        pub fn toBytes(self: @This()) usize {
-            return @as(usize, @intCast(@intFromEnum(self))) * 4;
-        }
-
-        pub fn fromBytes(bytes: usize) @This() {
-            return .fromWords(@intCast((bytes) / 4));
-        }
-
-        pub fn toWords(self: @This()) u16 {
-            return @intFromEnum(self);
-        }
-
-        pub fn fromWords(count: u16) @This() {
-            return @enumFromInt(count);
-        }
-    };
+    pub const Length = @import("../Client.zig").Request.Length;
 };

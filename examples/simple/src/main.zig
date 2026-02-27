@@ -30,82 +30,78 @@ pub const setup_listener = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
     const io = init.io;
 
-    const address: std.Io.net.UnixAddress = try .init(xpz.Client.default_display_path);
-    const stream = try address.connect(io);
-    defer stream.close(io);
-
-    var stream_reader_buffer: [1028]u8 = undefined;
-    var stream_reader = stream.reader(io, &stream_reader_buffer);
-    const reader = &stream_reader.interface;
-
-    var stream_writer_buffer: [1028]u8 = undefined;
-    var stream_writer = stream.writer(io, &stream_writer_buffer);
-    const writer = &stream_writer.interface;
-
-    const client: xpz.Client = try .init(io, reader, writer, xpz.Client.Options{
-        .auth = .{ .mit_magic_cookie_1 = .{ .xauthority = init.minimal.environ.getPosix(xpz.Client.Auth.@"MIT-MAGIC-COOKIE-1".XAUTHORITY).? } },
+    var client: xpz.Client = .{
+        .allocator = allocator,
+        .io = io,
+    };
+    var connection = try client.connectUnix(xpz.Client.Connection.default_address);
+    defer connection.destroy();
+    try connection.setupOptions(init.minimal, .{
         .setup_listener = .{
             .vendor = setup_listener.vendor,
             .screen = setup_listener.currentScreen,
         },
     });
 
-    // Atoms must be aquired before window mapping
-    const net_wm_name: xpz.Atom = try .intern(client, false, xpz.Atom.net_wm.name);
-    const utf8_string: xpz.Atom = try .intern(client, false, xpz.Atom.utf8_string);
+    const net_wm_name: xpz.Atom = try .intern(&connection, false, xpz.Atom.net_wm.name);
+    const utf8_string: xpz.Atom = try .intern(&connection, false, xpz.Atom.utf8_string);
 
-    const randr = try xpz.Extension.query(client, .RANDR) orelse return error.RandrUnsupported;
-    try xpz.randr.getMonitors(client, randr, true);
+    std.log.info("net_wm_name: {d}", .{@intFromEnum(net_wm_name)});
+    std.log.info("utf8_string: {d}", .{@intFromEnum(utf8_string)});
 
-    const window: xpz.Window = client.generateId(xpz.Window, 0);
-    try window.create(client, .{
-        .parent = client.root_screen.window,
-        .width = 600,
-        .height = 300,
-        .border_width = 1,
-        .visual_id = client.root_screen.visual_id,
-        .attributes = .{
-            .background_pixel = colors[2], // ARGB color
-            // .events = .all,
-            .events = .{
-                .exposure = true,
-                .key_press = true,
-                .key_release = true,
-                .keymap_state = true,
-                .focus_change = true,
-                .button_press = true,
-                .button_release = true,
-            },
-        },
-    });
+    // const randr = try xpz.Extension.query(client, .RANDR) orelse return error.RandrUnsupported;
+    // try xpz.randr.getMonitors(client, randr, true);
 
-    try window.changeProperty(client, .replace, .wm_name, .string, .@"8", title); // This is for setting on older systems, does not support unicode (emojis)
-    try window.changeProperty(client, .replace, net_wm_name, utf8_string, .@"8", title); // Modern way, supports unicode
+    // const window: xpz.Window = client.generateId(xpz.Window, 0);
+    // try window.create(client, .{
+    //     .parent = client.root_screen.window,
+    //     .width = 600,
+    //     .height = 300,
+    //     .border_width = 1,
+    //     .visual_id = client.root_screen.visual_id,
+    //     .attributes = .{
+    //         .background_pixel = colors[2], // ARGB color
+    //         // .events = .all,
+    //         .events = .{
+    //             .exposure = true,
+    //             .key_press = true,
+    //             .key_release = true,
+    //             .keymap_state = true,
+    //             .focus_change = true,
+    //             .button_press = true,
+    //             .button_release = true,
+    //         },
+    //     },
+    // });
 
-    defer window.destroy(client);
-    try window.map(client);
-    try client.writer.flush();
+    // try window.changeProperty(client, .replace, .wm_name, .string, .@"8", title); // This is for setting on older systems, does not support unicode (emojis)
+    // try window.changeProperty(client, .replace, net_wm_name, utf8_string, .@"8", title); // Modern way, supports unicode
 
-    main_loop: while (true) {
-        while (try xpz.Event.next(client)) |event| switch (event) {
-            .close => {
-                std.log.info("close", .{});
-                break :main_loop;
-            },
-            .expose => |expose| std.log.info("resize: {d}x{d}", .{ expose.width, expose.height }),
-            .key_press, .key_release => |key| {
-                const keycode = key.header.detail; // This is the hardware key, so its diffrent on diffrent platforms
-                std.log.info("pressed key: ({c}) {d}", .{ if (std.ascii.isPrint(keycode)) keycode else '?', keycode });
-            },
-            .button_press, .button_release => |button| {
-                std.log.info("{t}: {t}", .{ event, button.button() });
-            },
-            .keymap_notify => |map| {
-                std.log.info("keymap_notify: {d} {any}", .{ map.detail, map.keys });
-            },
-            else => |event_type| std.log.info("{t}", .{event_type}),
-        };
-    }
+    // defer window.destroy(client);
+    // try window.map(client);
+    // try client.writer.flush();
+
+    // main_loop: while (true) {
+    //     while (try xpz.Event.next(client)) |event| switch (event) {
+    //         .close => {
+    //             std.log.info("close", .{});
+    //             break :main_loop;
+    //         },
+    //         .expose => |expose| std.log.info("resize: {d}x{d}", .{ expose.width, expose.height }),
+    //         .key_press, .key_release => |key| {
+    //             const keycode = key.header.detail; // This is the hardware key, so its diffrent on diffrent platforms
+    //             std.log.info("pressed key: ({c}) {d}", .{ if (std.ascii.isPrint(keycode)) keycode else '?', keycode });
+    //         },
+    //         .button_press, .button_release => |button| {
+    //             std.log.info("{t}: {t}", .{ event, button.button() });
+    //         },
+    //         .keymap_notify => |map| {
+    //             std.log.info("keymap_notify: {d} {any}", .{ map.detail, map.keys });
+    //         },
+    //         else => |event_type| std.log.info("{t}", .{event_type}),
+    //     };
+    // }
 }

@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const protocol = @import("protocol/protocol.zig");
+pub const protocol = @import("protocol.zig");
 pub const glx = @import("glx.zig");
 pub const randr = @import("randr.zig");
 

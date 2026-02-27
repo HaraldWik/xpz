@@ -1,5 +1,5 @@
 const std = @import("std");
-const protocol = @import("protocol/protocol.zig");
+const protocol = @import("protocol.zig");
 const Client = @import("Client.zig");
 
 pub const Atom = enum(u32) {
@@ -152,43 +152,29 @@ pub const Atom = enum(u32) {
         pub const close_windoww = "_NET_CLOSE_WINDOW";
     };
 
-    pub fn intern(client: Client, only_if_exists: bool, name: []const u8) !@This() {
-        const padded_name_len = (name.len + 3) & ~@as(usize, 3);
+    pub fn intern(connection: *Client.Connection, only_if_exists: bool, name: []const u8) !@This() {
+        const request = try internUnflushed(connection, only_if_exists, name);
+        try connection.flush();
+        const reply = try request.receiveReply(protocol.core.atom.intern.Reply);
+        return reply.value.atom;
+    }
 
-        const request: protocol.core.atom.intern.Request = .{
-            .header = .{
-                .opcode = .intern_atom,
-                .detail = @intFromBool(only_if_exists),
-                .length = .fromBytes(@sizeOf(protocol.core.atom.intern.Request) + padded_name_len),
-            },
+    /// Better when you are fetching multiple atoms at the same time
+    pub fn internUnflushed(connection: *Client.Connection, only_if_exists: bool, name: []const u8) !Client.Request {
+        const request_value: protocol.core.atom.intern.Request = .{
             .name_len = @intCast(name.len),
+            .name = name,
         };
 
-        try client.writer.writeStruct(request, client.endian);
-        try client.writer.writeAll(name);
-        _ = try client.writer.splatByte(0, (4 - (name.len % 4)) % 4); // Padding
-
-        try client.writer.flush();
-
-        const reply = try client.reader.takeStruct(protocol.core.atom.intern.Reply, client.endian);
-        if (reply.header.response_type != .reply) return error.InvalidResponseType;
-
-        return reply.atom;
+        return try connection.sendRequestUnflushed(.{ .core = .{ .major = .intern_atom, .detail = @intFromBool(only_if_exists) } }, request_value);
     }
 
     /// The returned slice points into the reader buffer and is not guaranteed to be valid after more calls,
     /// recommended to use allocator.dupe or store it into a buffer
-    pub fn getName(self: @This(), client: Client) ![]const u8 {
-        const request: protocol.core.atom.get_name.Request = .{
-            .atom = self,
-        };
-        try client.writer.writeStruct(request, client.endian);
-        try client.writer.flush();
-
-        try client.reader.fillMore();
-        const reply = try client.reader.takeStruct(protocol.core.atom.get_name.Reply, client.endian);
-        const name = std.mem.trimEnd(u8, try client.reader.take(reply.name_len), &.{0});
-        std.debug.print("atom name: {s}\n", .{name});
-        return name;
+    pub fn getName(self: @This(), connection: *Client.Connection) ![]const u8 {
+        const request_value: protocol.core.atom.get_name.Request = .{ .atom = self };
+        const request = try connection.sendRequest(.{ .core = .{ .major = .get_atom_name } }, request_value);
+        const reply = try request.receiveReply(protocol.core.atom.get_name.Reply);
+        return connection.reader.interface.take(reply.value.name_len);
     }
 };

@@ -1,20 +1,25 @@
 const std = @import("std");
-const protocol = @import("protocol/protocol.zig");
+const protocol = @import("protocol.zig");
 const PixmapFormat = @import("root.zig").PixmapFormat;
 const Screen = @import("root.zig").Screen;
 const Visual = @import("root.zig").Visual;
 
-pub const default_display_path = "/tmp/.X11-unix/X0";
+const Client = @This();
 
-reader: *std.Io.Reader,
-writer: *std.Io.Writer,
+allocator: std.mem.Allocator,
+io: std.Io,
 
-endian: std.builtin.Endian,
+read_buffer_size: usize = 256,
+/// Each `Connection` allocates this amount for the writer buffer.
+write_buffer_size: usize = 256,
 
-// setup reply
-setup: protocol.core.setup.Reply,
+endian: std.builtin.Endian = .little,
 
-root_screen: Screen,
+auth: ?Auth = null,
+
+setup_reply: protocol.core.setup.Reply = undefined,
+
+root_screen: Screen = undefined,
 
 /// Provides setup information about the server, including vendor, screens, their depths, and pixel formats.
 /// The data received through these callbacks is only valid within the callback scope.
@@ -33,108 +38,294 @@ pub const SetupListener = struct {
     screenDepthVisual: ?*const fn (user_data: ?*anyopaque, screen: Screen, depth: Screen.Depth, visual: Visual) anyerror!void = null,
 };
 
-pub const Options = struct {
-    endian: std.builtin.Endian = .native,
-    protocol_version: protocol.common.Version = .{ .major = 11, .minor = 0 },
-    auth: Auth,
-    setup_listener: ?SetupListener = null,
-};
+pub const Request = struct {
+    connection: *Connection,
+    opcode: Opcode,
+    sequence: u16,
 
-pub fn init(io: std.Io, reader: *std.Io.Reader, writer: *std.Io.Writer, options: Options) !@This() {
-    var auth_buffer: [128]u8 = undefined;
-    const auth_name = options.auth.getName();
-    const auth_data: []const u8 = switch (options.auth) {
-        .mit_magic_cookie_1 => |auth| auth.init(io, &auth_buffer) catch |err| switch (err) {
-            error.FileNotFound => "",
-            else => return err,
-        },
-        .xdm_authorization_1 => @panic("currently unsupported auth protocol"),
-        .custom => |auth| auth.data,
+    pub const Length = enum(u16) {
+        _,
+
+        pub inline fn toBytes(self: @This()) usize {
+            return @as(usize, @intCast(@intFromEnum(self))) * 4;
+        }
+
+        pub inline fn fromBytes(bytes: usize) @This() {
+            return .fromWords(@intCast(@divExact(bytes, 4)));
+        }
+
+        pub inline fn toWords(self: @This()) u16 {
+            return @intFromEnum(self);
+        }
+
+        pub inline fn fromWords(count: u16) @This() {
+            return @enumFromInt(count);
+        }
     };
 
-    const request: protocol.core.setup.Request = .{
-        .byte_order = switch (options.endian) {
-            .big => 'B',
-            .little => 'l',
-        },
-        .protocol_version = options.protocol_version,
-        .auth_name_len = @intCast(auth_name.len),
-        .auth_data_len = @intCast(auth_data.len),
+    pub const Opcode = union(enum) {
+        core: struct { major: protocol.core.Opcode, detail: u8 = 0 },
+        glx: struct { major: u8, minor: protocol.glx.Opcode },
+        randr: struct { major: u8, minor: protocol.randr.Opcode },
+
+        pub fn major(self: @This()) u8 {
+            return switch (self) {
+                .core => |core| @intFromEnum(core.major),
+                inline else => |ext| @field(ext, "major"),
+            };
+        }
+
+        /// Returns detail when used on core
+        pub fn minor(self: @This()) u8 {
+            return switch (self) {
+                .core => |core| core.detail,
+                inline else => |ext| @intFromEnum(@field(ext, "minor")),
+            };
+        }
     };
 
-    try writer.writeStruct(request, .little);
-    if (try writer.write(auth_name) != auth_name.len) return error.BufferTooSmall;
-    _ = try writer.splatByte(0, (4 - (writer.end % 4)) % 4); // Padding
-    if (try writer.write(auth_data) != auth_data.len) return error.BufferTooSmall;
-    _ = try writer.splatByte(0, (4 - (writer.end % 4)) % 4); // Padding
-
-    try writer.flush();
-
-    // Read setup
-    try reader.fillMore();
-
-    const status: protocol.core.ReplyHeader.ResponseType = @enumFromInt(try reader.peekInt(u8, options.endian));
-    switch (status) {
-        .reply => {}, // Success
-        .err => {
-            const reason_len = try reader.takeInt(u8, options.endian);
-            const reason = try reader.take(reason_len);
-            if (reason.len > 1) std.log.err("{s}", .{reason[1..]});
-            return error.SetupReply;
-        },
-        .auth => {
-            const reason_len = try reader.takeInt(u8, options.endian);
-            const reason = try reader.take(reason_len);
-            if (reason.len != 0) std.log.err("{s}", .{reason[1..]});
-            return error.AuthenticateRequired;
-        },
-        _ => {},
+    pub fn send(connection: *Connection, opcode: Request.Opcode, value: anytype) !Request {
+        const writer = &connection.*.writer.interface;
+        const request = try sendUnflushed(connection, opcode, value);
+        try writer.flush();
+        return request;
     }
 
-    const reply = try reader.takeStruct(protocol.core.setup.Reply, options.endian);
-    std.debug.assert(options.protocol_version.major <= reply.protocol_version.major);
-    std.debug.assert(options.protocol_version.minor <= reply.protocol_version.minor);
+    pub fn sendUnflushed(connection: *Connection, opcode: Request.Opcode, value: anytype) !Request {
+        const io = connection.client.io;
+        connection.mutex.lockUncancelable(io);
+        defer connection.mutex.unlock(io);
 
-    const vendor = std.mem.trimEnd(u8, try reader.take(reply.vendor_len), &.{0});
-    if (options.setup_listener) |setup_listener| if (setup_listener.vendor) |f| try f(setup_listener.user_data, vendor);
+        const endian = connection.client.endian;
+        const writer = &connection.*.writer.interface;
+        const start_index = writer.end;
 
-    for (0..reply.pixmap_format_count) |_| {
-        const pixmap_format = try reader.takeStruct(PixmapFormat, options.endian);
-        if (options.setup_listener) |setup_listener| if (setup_listener.pixmapFormat) |f| try f(setup_listener.user_data, pixmap_format);
+        try writer.writeInt(u8, opcode.major(), endian);
+        try writer.writeInt(u8, opcode.minor(), endian);
+        try writer.writeInt(u16, 0, endian); // 0 for now
+
+        try writeStruct(writer, endian, value);
+
+        const end_index = writer.end;
+        const length: Request.Length = .fromBytes(end_index - start_index);
+        var length_buffer: [@divExact(@typeInfo(@typeInfo(Request.Length).@"enum".tag_type).int.bits, 8)]u8 = undefined;
+        std.mem.writeInt(u16, &length_buffer, length.toWords(), endian);
+        writer.buffer[start_index + 2] = length_buffer[0];
+        writer.buffer[start_index + 3] = length_buffer[1];
+
+        connection.sequence += 1;
+
+        return .{ .connection = connection, .opcode = opcode, .sequence = connection.sequence };
     }
 
-    var root_screen: Screen = undefined;
-    for (0..reply.screen_count) |i| {
-        const screen = try reader.takeStruct(Screen, options.endian);
-        if (i == 0) root_screen = screen;
+    pub fn receiveReply(self: @This(), T: type) !Reply(T) {
+        const connection = self.connection;
+        const io = connection.client.io;
+        connection.mutex.lockUncancelable(io);
+        defer connection.mutex.unlock(io);
 
-        if (options.setup_listener) |setup_listener| if (setup_listener.screen) |f| try f(setup_listener.user_data, screen);
+        const endian = connection.client.endian;
+        const reader = &connection.*.reader.interface;
+        if (reader.bufferedLen() < @sizeOf(Reply(T))) try reader.fillMore();
+        const header = try readStruct(reader, ReplyHeader, endian);
+        const value = try readStruct(reader, T, endian);
+        if (header.sequence != self.sequence) return error.WrongSequence;
+        if (header.response_type != .reply) return error.BadResponseType;
 
-        for (0..screen.depths_count) |_| {
-            const depth = try reader.takeStruct(Screen.Depth, options.endian);
+        return .{
+            .header = header,
+            .value = value,
+        };
+    }
 
-            if (options.setup_listener) |setup_listener| if (setup_listener.screenDepth) |f| try f(setup_listener.user_data, screen, depth);
+    fn readStruct(reader: *std.Io.Reader, T: type, endian: std.builtin.Endian) !T {
+        var value: T = std.mem.zeroes(T);
+        inline for (@typeInfo(T).@"struct".fields) |field| @field(value, field.name) = switch (@typeInfo(field.type)) {
+            .array => |arr| if (arr.child == u8) {
+                const read = try reader.take(arr.len);
+                @memcpy(@field(value, field.name)[0..arr.len], read);
+                continue;
+            } else @compileError("can not read non u8 array"),
+            .int => try reader.takeInt(field.type, endian),
+            .bool => (try reader.takeInt(field.type, endian)) == 1,
+            .@"enum" => try reader.takeEnum(field.type, endian),
+            .@"struct" => try readStruct(reader, endian, T),
+            else => @compileError("can not read type of " ++ @typeName(field.type) ++ " aka " ++ @tagName(@typeInfo(field.type))),
+        };
+        return value;
+    }
 
-            for (0..depth.visuals_count) |_| {
-                const visual = try reader.takeStruct(Visual, options.endian);
-                if (options.setup_listener) |setup_listener| if (setup_listener.screenDepthVisual) |f| try f(setup_listener.user_data, screen, depth, visual);
+    fn writeStruct(writer: *std.Io.Writer, endian: std.builtin.Endian, value: anytype) !void {
+        inline for (@typeInfo(@TypeOf(value)).@"struct".fields) |field| {
+            const field_val = @field(value, field.name);
+            switch (@typeInfo(field.type)) {
+                .pointer => |ptr| {
+                    if (ptr.child == u8)
+                        try writer.writeAll(field_val)
+                    else
+                        try writer.writeSliceEndian(ptr.child, field_val, endian);
+                    _ = try writer.splatByte(0, (4 - (writer.end % 4)) % 4); // Padding
+                },
+                .array => |arr| if (arr.child == u8)
+                    try writer.writeAll(field_val)
+                else
+                    try writer.writeSliceEndian(arr.child, field_val, endian),
+                .int => try writer.writeInt(field.type, field_val, endian),
+                .bool => try writer.writeInt(u8, field_val, endian),
+                .@"enum" => |e| try writer.writeInt(e.tag_type, @intFromEnum(field_val), endian),
+                .@"struct" => try writeStruct(writer, endian, field_val),
+                else => @compileError("can not write type of " ++ @typeName(field.type) ++ " aka " ++ @tagName(@typeInfo(field.type))),
             }
         }
     }
+};
 
-    reader.tossBuffered();
+pub fn Reply(T: type) type {
+    return struct {
+        header: ReplyHeader,
+        value: T,
+    };
+}
+
+pub const ReplyHeader = struct {
+    response_type: ResponseType,
+    pad0: u8 = undefined,
+    sequence: u16,
+    length: u32,
+
+    pub const ResponseType = enum(u8) {
+        err = 0,
+        reply = 1,
+    };
+};
+
+pub const Connection = struct {
+    client: *Client,
+    reader: std.Io.net.Stream.Reader,
+    writer: std.Io.net.Stream.Writer,
+    sequence: u16 = 0,
+    mutex: std.Io.Mutex = .init,
+
+    pub const default_address: std.Io.net.UnixAddress = .{ .path = "/tmp/.X11-unix/X0" };
+
+    pub const SetupOptions = struct {
+        protocol_version_major: u16 = 11,
+        protocol_version_minor: u16 = 0,
+        setup_listener: ?SetupListener = null,
+    };
+
+    pub fn setup(self: *@This(), minimal: std.process.Init.Minimal) !void {
+        try self.setupOptions(minimal, .{});
+    }
+
+    pub fn setupOptions(self: *@This(), minimal: std.process.Init.Minimal, options: SetupOptions) !void {
+        const io = self.client.io;
+        const endian = self.client.endian;
+        const reader = &self.reader.interface;
+        const writer = &self.writer.interface;
+
+        self.mutex.lockUncancelable(io);
+        defer self.mutex.unlock(io);
+
+        var auth_buffer: [128]u8 = undefined;
+        const auth: Auth = self.client.auth orelse
+            if (minimal.environ.getPosix(Auth.@"MIT-MAGIC-COOKIE-1".XAUTHORITY)) |xauthority| try Auth.@"MIT-MAGIC-COOKIE-1".get(io, &auth_buffer, xauthority) else .none;
+
+        const request_value: protocol.core.setup.Request = .{
+            .byte_order = switch (endian) {
+                .big => 'B',
+                .little => 'l',
+            },
+            .protocol_version_major = options.protocol_version_major,
+            .protocol_version_minor = options.protocol_version_minor,
+            .auth_name_len = @intCast(auth.name.len),
+            .auth_data_len = @intCast(auth.data.len),
+            .auth = auth,
+        };
+        try Request.writeStruct(writer, endian, request_value);
+        try writer.flush();
+
+        // Read setup
+        try reader.fillMore();
+
+        const status: ReplyHeader.ResponseType = @enumFromInt(try reader.peekInt(u8, endian));
+        if (status != .reply) {
+            std.log.err("{s}", .{reader.buffered()[4..]});
+            return error.SetupReply;
+        }
+
+        const reply = try reader.takeStruct(protocol.core.setup.Reply, endian);
+        std.debug.assert(options.protocol_version_major <= reply.protocol_version_major);
+        std.debug.assert(options.protocol_version_minor <= reply.protocol_version_minor);
+
+        const vendor = std.mem.trimEnd(u8, try reader.take(reply.vendor_len), &.{0});
+        if (options.setup_listener) |setup_listener| if (setup_listener.vendor) |f| try f(setup_listener.user_data, vendor);
+
+        for (0..reply.pixmap_format_count) |_| {
+            const pixmap_format = try reader.takeStruct(PixmapFormat, endian);
+            if (options.setup_listener) |setup_listener| if (setup_listener.pixmapFormat) |f| try f(setup_listener.user_data, pixmap_format);
+        }
+
+        var root_screen: Screen = undefined;
+        for (0..reply.screen_count) |i| {
+            const screen = try reader.takeStruct(Screen, endian);
+            if (i == 0) root_screen = screen;
+
+            if (options.setup_listener) |setup_listener| if (setup_listener.screen) |f| try f(setup_listener.user_data, screen);
+
+            for (0..screen.depths_count) |_| {
+                const depth = try reader.takeStruct(Screen.Depth, endian);
+
+                if (options.setup_listener) |setup_listener| if (setup_listener.screenDepth) |f| try f(setup_listener.user_data, screen, depth);
+
+                for (0..depth.visuals_count) |_| {
+                    const visual = try reader.takeStruct(Visual, endian);
+                    if (options.setup_listener) |setup_listener| if (setup_listener.screenDepthVisual) |f| try f(setup_listener.user_data, screen, depth, visual);
+                }
+            }
+        }
+
+        reader.tossBuffered();
+    }
+
+    pub fn destroy(self: @This()) void {
+        const allocator = self.client.allocator;
+        allocator.free(self.reader.interface.buffer);
+        allocator.free(self.writer.interface.buffer);
+    }
+
+    pub fn flush(self: *@This()) std.Io.Writer.Error!void {
+        try self.writer.interface.flush();
+    }
+
+    pub fn sendRequest(self: *@This(), opcode: Request.Opcode, value: anytype) !Request {
+        return .send(self, opcode, value);
+    }
+
+    pub fn sendRequestUnflushed(self: *@This(), opcode: Request.Opcode, value: anytype) !Request {
+        return .sendUnflushed(self, opcode, value);
+    }
+};
+
+pub fn connectUnix(client: *@This(), address: std.Io.net.UnixAddress) !Connection {
+    const allocator = client.allocator;
+    const io = client.io;
+    const stream = try address.connect(io);
+
+    const read_buffer = try allocator.alloc(u8, client.read_buffer_size);
+    const reader = stream.reader(io, read_buffer);
+    const write_buffer = try allocator.alloc(u8, client.write_buffer_size);
+    const writer = stream.writer(io, write_buffer);
 
     return .{
+        .client = client,
         .reader = reader,
         .writer = writer,
-        .endian = options.endian,
-        .setup = reply,
-        .root_screen = root_screen,
     };
 }
 
 pub fn generateId(self: @This(), comptime T: type, resource_index: u32) T {
-    const id = self.setup.resource_id_base | (resource_index & self.setup.resource_id_mask);
+    const id = self.setup_reply.resource_id_base | (resource_index & self.setup_reply.resource_id_mask);
     switch (@typeInfo(T)) {
         .@"enum" => |e| {
             if (e.tag_type != u32) @compileError("expected enum with tag type of u32 found '" ++ @typeName(e.tag_type) ++ "'");
@@ -151,32 +342,27 @@ pub fn generateId(self: @This(), comptime T: type, resource_index: u32) T {
 /// "xhost +local:" removes the need to authenticate
 /// "xhost -local:" adds the need to authenticate
 /// https://x.org/releases/X11R7.5/doc/man/man7/Xsecurity.7.html
-pub const Auth = union(enum) {
-    mit_magic_cookie_1: @"MIT-MAGIC-COOKIE-1",
-    xdm_authorization_1: @"XDM-AUTHORIZATION-1",
-    custom: Custom,
+pub const Auth = struct {
+    name: []const u8,
+    data: []const u8,
 
-    pub const none: @This() = .{ .custom = .{
-        .protocol_name = "",
-        .data = "",
-    } };
+    pub const none: @This() = .{ .name = "", .data = "" };
 
+    /// The most common auth protocol
     pub const @"MIT-MAGIC-COOKIE-1" = struct {
-        /// Can be found in enviorment variable $XAUTHORITY
-        xauthority: []const u8,
-
         pub const XAUTHORITY = "XAUTHORITY";
 
         pub const protocol_name = "MIT-MAGIC-COOKIE-1";
 
-        pub fn init(self: @This(), io: std.Io, buffer: []u8) ![]const u8 {
-            const file = try std.Io.Dir.openFileAbsolute(io, self.xauthority, .{});
+        /// xauthority can be found in enviorment variable $XAUTHORITY
+        pub fn get(io: std.Io, buffer: []u8, xauthority: []const u8) !Auth {
+            const file = try std.Io.Dir.openFileAbsolute(io, xauthority, .{});
             defer file.close(io);
 
             var file_reader = file.reader(io, buffer);
             const reader = &file_reader.interface;
 
-            while (true) {
+            const data: []const u8 = while (true) {
                 try reader.fill(4);
                 const family = try reader.takeInt(u16, .big);
 
@@ -204,29 +390,22 @@ pub const Auth = union(enum) {
                 _ = address;
                 _ = display;
 
-                if (std.mem.eql(u8, name, protocol_name)) return data;
+                if (std.mem.eql(u8, name, protocol_name)) break data;
 
                 reader.tossBuffered();
             } else {
                 @branchHint(.unlikely);
                 return error.NoAuthDataFound;
-            }
+            };
+
+            return .{
+                .name = protocol_name,
+                .data = data,
+            };
         }
     };
 
     pub const @"XDM-AUTHORIZATION-1" = struct {
         pub const protocol_name = "XDM-AUTHORIZATION-1";
     };
-
-    pub const Custom = struct {
-        protocol_name: []const u8,
-        data: []const u8,
-    };
-
-    pub fn getName(self: @This()) []const u8 {
-        return switch (self) {
-            .custom => self.custom.protocol_name,
-            inline else => |p| @TypeOf(p).protocol_name,
-        };
-    }
 };
