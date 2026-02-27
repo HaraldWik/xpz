@@ -17,10 +17,6 @@ endian: std.builtin.Endian = .little,
 
 auth: ?Auth = null,
 
-setup_reply: protocol.core.setup.Reply = undefined,
-
-root_screen: Screen = undefined,
-
 /// Provides setup information about the server, including vendor, screens, their depths, and pixel formats.
 /// The data received through these callbacks is only valid within the callback scope.
 /// Accessing it outside of these callbacks may result in undefined behavior.
@@ -40,7 +36,9 @@ pub const SetupListener = struct {
 
 pub const Request = struct {
     connection: *Connection,
-    opcode: Opcode,
+    opcode: Header,
+    start: usize,
+    end: usize,
     sequence: u16,
 
     pub const Length = enum(u16) {
@@ -63,7 +61,7 @@ pub const Request = struct {
         }
     };
 
-    pub const Opcode = union(enum) {
+    pub const Header = union(enum) {
         core: struct { major: protocol.core.Opcode, detail: u8 = 0 },
         glx: struct { major: u8, minor: protocol.glx.Opcode },
         randr: struct { major: u8, minor: protocol.randr.Opcode },
@@ -84,38 +82,38 @@ pub const Request = struct {
         }
     };
 
-    pub fn send(connection: *Connection, opcode: Request.Opcode, value: anytype) !Request {
+    pub fn send(connection: *Connection, header: Request.Header, value: anytype) !Request {
         const writer = &connection.*.writer.interface;
-        const request = try sendUnflushed(connection, opcode, value);
+        const request = try sendUnflushed(connection, header, value);
         try writer.flush();
         return request;
     }
 
-    pub fn sendUnflushed(connection: *Connection, opcode: Request.Opcode, value: anytype) !Request {
+    pub fn sendUnflushed(connection: *Connection, header: Request.Header, value: anytype) !Request {
         const io = connection.client.io;
         connection.mutex.lockUncancelable(io);
         defer connection.mutex.unlock(io);
 
         const endian = connection.client.endian;
         const writer = &connection.*.writer.interface;
-        const start_index = writer.end;
 
-        try writer.writeInt(u8, opcode.major(), endian);
-        try writer.writeInt(u8, opcode.minor(), endian);
+        const start = writer.end;
+
+        try writer.writeInt(u8, header.major(), endian);
+        try writer.writeInt(u8, header.minor(), endian);
         try writer.writeInt(u16, 0, endian); // 0 for now
 
-        try writeStruct(writer, endian, value);
+        try writeValue(writer, endian, value);
 
-        const end_index = writer.end;
-        const length: Request.Length = .fromBytes(end_index - start_index);
-        var length_buffer: [@divExact(@typeInfo(@typeInfo(Request.Length).@"enum".tag_type).int.bits, 8)]u8 = undefined;
-        std.mem.writeInt(u16, &length_buffer, length.toWords(), endian);
-        writer.buffer[start_index + 2] = length_buffer[0];
-        writer.buffer[start_index + 3] = length_buffer[1];
+        const end = writer.end;
 
         connection.sequence += 1;
 
-        return .{ .connection = connection, .opcode = opcode, .sequence = connection.sequence };
+        std.log.info("header: {any}, request bytes: {any}", .{ header, writer.buffered()[start..end] });
+
+        var request: @This() = .{ .connection = connection, .opcode = header, .start = start, .end = end, .sequence = connection.sequence };
+        try request.setLength(.fromBytes(end - start));
+        return request;
     }
 
     pub fn receiveReply(self: @This(), T: type) !Reply(T) {
@@ -127,8 +125,8 @@ pub const Request = struct {
         const endian = connection.client.endian;
         const reader = &connection.*.reader.interface;
         if (reader.bufferedLen() < @sizeOf(Reply(T))) try reader.fillMore();
-        const header = try readStruct(reader, ReplyHeader, endian);
-        const value = try readStruct(reader, T, endian);
+        const header = try readValue(reader, ReplyHeader, endian);
+        const value = try readValue(reader, T, endian);
         if (header.sequence != self.sequence) return error.WrongSequence;
         if (header.response_type != .reply) return error.BadResponseType;
 
@@ -138,7 +136,17 @@ pub const Request = struct {
         };
     }
 
-    fn readStruct(reader: *std.Io.Reader, T: type, endian: std.builtin.Endian) !T {
+    pub fn setLength(self: *@This(), length: Length) !void {
+        const endian = self.connection.client.endian;
+        const writer = &self.connection.*.writer.interface;
+        var length_buffer: [@divExact(@typeInfo(@typeInfo(Request.Length).@"enum".tag_type).int.bits, 8)]u8 = undefined;
+        std.mem.writeInt(u16, &length_buffer, length.toWords(), endian);
+        writer.buffer[self.start + 2] = length_buffer[0];
+        writer.buffer[self.start + 3] = length_buffer[1];
+        self.end = self.start + length.toBytes();
+    }
+
+    fn readValue(reader: *std.Io.Reader, T: type, endian: std.builtin.Endian) !T {
         var value: T = std.mem.zeroes(T);
         inline for (@typeInfo(T).@"struct".fields) |field| @field(value, field.name) = switch (@typeInfo(field.type)) {
             .array => |arr| if (arr.child == u8) {
@@ -149,13 +157,13 @@ pub const Request = struct {
             .int => try reader.takeInt(field.type, endian),
             .bool => (try reader.takeInt(field.type, endian)) == 1,
             .@"enum" => try reader.takeEnum(field.type, endian),
-            .@"struct" => try readStruct(reader, endian, T),
+            .@"struct" => try readValue(reader, endian, T),
             else => @compileError("can not read type of " ++ @typeName(field.type) ++ " aka " ++ @tagName(@typeInfo(field.type))),
         };
         return value;
     }
 
-    fn writeStruct(writer: *std.Io.Writer, endian: std.builtin.Endian, value: anytype) !void {
+    fn writeValue(writer: *std.Io.Writer, endian: std.builtin.Endian, value: anytype) !void {
         inline for (@typeInfo(@TypeOf(value)).@"struct".fields) |field| {
             const field_val = @field(value, field.name);
             switch (@typeInfo(field.type)) {
@@ -167,13 +175,16 @@ pub const Request = struct {
                     _ = try writer.splatByte(0, (4 - (writer.end % 4)) % 4); // Padding
                 },
                 .array => |arr| if (arr.child == u8)
-                    try writer.writeAll(field_val)
+                    try writer.writeAll(&field_val)
                 else
                     try writer.writeSliceEndian(arr.child, field_val, endian),
                 .int => try writer.writeInt(field.type, field_val, endian),
-                .bool => try writer.writeInt(u8, field_val, endian),
+                .bool => try writer.writeInt(u8, @intFromBool(field_val), endian),
                 .@"enum" => |e| try writer.writeInt(e.tag_type, @intFromEnum(field_val), endian),
-                .@"struct" => try writeStruct(writer, endian, field_val),
+                .@"struct" => |s| switch (s.layout) {
+                    .auto, .@"extern" => try writeValue(writer, endian, field_val),
+                    .@"packed" => try writer.writeStruct(field_val, endian),
+                },
                 else => @compileError("can not write type of " ++ @typeName(field.type) ++ " aka " ++ @tagName(@typeInfo(field.type))),
             }
         }
@@ -204,6 +215,7 @@ pub const Connection = struct {
     reader: std.Io.net.Stream.Reader,
     writer: std.Io.net.Stream.Writer,
     sequence: u16 = 0,
+    resource_id: ResourceId = .{},
     mutex: std.Io.Mutex = .init,
 
     pub const default_address: std.Io.net.UnixAddress = .{ .path = "/tmp/.X11-unix/X0" };
@@ -214,11 +226,22 @@ pub const Connection = struct {
         setup_listener: ?SetupListener = null,
     };
 
-    pub fn setup(self: *@This(), minimal: std.process.Init.Minimal) !void {
-        try self.setupOptions(minimal, .{});
+    pub const ResourceId = struct {
+        base: u32 = 0,
+        mask: u32 = 0,
+        index: u32 = 0,
+
+        pub fn next(self: *@This()) u32 {
+            return self.base | (self.index & self.mask);
+        }
+    };
+
+    pub fn setup(self: *@This(), minimal: std.process.Init.Minimal) !Screen {
+        return self.setupOptions(minimal, .{});
     }
 
-    pub fn setupOptions(self: *@This(), minimal: std.process.Init.Minimal, options: SetupOptions) !void {
+    /// Returns the root screen
+    pub fn setupOptions(self: *@This(), minimal: std.process.Init.Minimal, options: SetupOptions) !Screen {
         const io = self.client.io;
         const endian = self.client.endian;
         const reader = &self.reader.interface;
@@ -242,7 +265,7 @@ pub const Connection = struct {
             .auth_data_len = @intCast(auth.data.len),
             .auth = auth,
         };
-        try Request.writeStruct(writer, endian, request_value);
+        try Request.writeValue(writer, endian, request_value);
         try writer.flush();
 
         // Read setup
@@ -286,6 +309,12 @@ pub const Connection = struct {
         }
 
         reader.tossBuffered();
+
+        self.resource_id = .{
+            .base = reply.resource_id_base,
+            .mask = reply.resource_id_mask,
+        };
+        return root_screen;
     }
 
     pub fn destroy(self: @This()) void {
@@ -298,12 +327,12 @@ pub const Connection = struct {
         try self.writer.interface.flush();
     }
 
-    pub fn sendRequest(self: *@This(), opcode: Request.Opcode, value: anytype) !Request {
-        return .send(self, opcode, value);
+    pub fn sendRequest(self: *@This(), header: Request.Header, value: anytype) !Request {
+        return .send(self, header, value);
     }
 
-    pub fn sendRequestUnflushed(self: *@This(), opcode: Request.Opcode, value: anytype) !Request {
-        return .sendUnflushed(self, opcode, value);
+    pub fn sendRequestUnflushed(self: *@This(), header: Request.Header, value: anytype) !Request {
+        return .sendUnflushed(self, header, value);
     }
 };
 
@@ -322,21 +351,6 @@ pub fn connectUnix(client: *@This(), address: std.Io.net.UnixAddress) !Connectio
         .reader = reader,
         .writer = writer,
     };
-}
-
-pub fn generateId(self: @This(), comptime T: type, resource_index: u32) T {
-    const id = self.setup_reply.resource_id_base | (resource_index & self.setup_reply.resource_id_mask);
-    switch (@typeInfo(T)) {
-        .@"enum" => |e| {
-            if (e.tag_type != u32) @compileError("expected enum with tag type of u32 found '" ++ @typeName(e.tag_type) ++ "'");
-            return @enumFromInt(id);
-        },
-        .int => |i| {
-            if (i.signedness == .signed or i.bits != 32) @compileError("expected u32 found '" ++ @typeName(T) ++ "'");
-            return id;
-        },
-        else => @compileError("invalid type given to nextId"),
-    }
 }
 
 /// "xhost +local:" removes the need to authenticate

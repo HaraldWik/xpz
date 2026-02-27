@@ -1,6 +1,6 @@
 const Client = @import("../Client.zig");
 const ResponseType = @import("../Client.zig").ReplyHeader.ResponseType;
-const Atom = @import("../atom.zig").Atom;
+const root = @import("../root.zig");
 
 pub const Opcode = enum(u8) {
     create_window = 1,
@@ -149,9 +149,9 @@ pub const setup = struct {
         motion_buffer_size: u32,
         vendor_len: u16,
         maximum_request_length: u16,
-        screen_count: u8, // 'root_len'
+        screen_count: u8, // aka 'root_len'
         pixmap_format_count: u8,
-        image_byte_order: u8, // endian
+        image_byte_order: u8, // endian aka 'l' or 'B'
         bitmap_format_bit_order: u8,
         bitmap_format_scanline_unit: u8,
         bitmap_format_scanline_pad: u8,
@@ -177,20 +177,95 @@ pub const atom = struct {
             name: []const u8,
         };
 
-        pub const Reply = extern struct {
-            atom: Atom,
+        pub const Reply = struct {
+            atom: root.Atom,
             pad0: [20]u8 = undefined,
         };
     };
 
     pub const get_name = struct {
-        pub const Request = extern struct {
-            atom: Atom,
+        pub const Request = struct {
+            atom: root.Atom,
         };
 
-        pub const Reply = extern struct {
+        pub const Reply = struct {
             name_len: u32,
             pad0: [24]u8,
         };
+    };
+};
+
+pub const window = struct {
+    pub const Create = extern struct {
+        // .detail = depth
+        window: root.Window,
+        parent: root.Window, // screen root or parent
+        x: i16,
+        y: i16,
+        width: u16,
+        height: u16,
+        border_width: u16,
+        class: Class = .input_output,
+        visual_id: root.Visual.Id, // usually copied from parent
+        value_mask: root.Window.Attributes.Mask,
+
+        pub const Class = enum(u16) {
+            copy_from_parent = 0,
+            input_output = 1,
+            input_only = 2,
+        };
+    };
+
+    pub const Destroy = struct {
+        window: root.Window,
+    };
+
+    pub const Map = struct {
+        window: root.Window,
+    };
+
+    pub const CreateGC = struct {
+        cid: root.GContext,
+        drawable: root.Drawable,
+        mask: u32,
+    };
+
+    pub const ChangeAttributes = struct {
+        window: root.Window,
+        value_mask: root.Window.Attributes.Mask,
+    };
+
+    pub const ChangeProperty = struct {
+        // .detail = ChangeMode,
+        window: root.Window,
+        property: root.Atom,
+        type: root.Atom,
+        format: root.Format,
+        pad0: [3]u8 = undefined,
+        element_count: u32,
+        data: []const u8,
+
+        pub const ChangeMode = enum(u8) {
+            replace = 0,
+            prepend = 1,
+            append = 2,
+        };
+    };
+
+    pub const ClearArea = struct {
+        window: root.Window,
+        exposures: bool,
+        x: i16,
+        y: i16,
+        width: u16,
+        height: u16,
+    };
+};
+
+pub const event = struct {
+    pub const Send = extern struct {
+        // .detail = propagate (bool)
+        destination: root.Window,
+        event_mask: root.Event.Mask,
     };
 };

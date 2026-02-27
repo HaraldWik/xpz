@@ -526,10 +526,12 @@ pub const Event = union(Tag) {
         };
     };
 
-    pub fn next(client: Client) !?@This() {
-        const stream_reader: *std.Io.net.Stream.Reader = @fieldParentPtr("interface", client.reader);
+    pub fn next(connection: *Client.Connection) !?@This() {
+        const endian = connection.client.endian;
+        const reader = &connection.*.reader.interface;
+
         var poll_fds = [_]std.posix.pollfd{.{
-            .fd = stream_reader.stream.socket.handle,
+            .fd = connection.reader.stream.socket.handle,
             .events = std.posix.POLL.IN,
             .revents = 0,
         }};
@@ -543,87 +545,87 @@ pub const Event = union(Tag) {
 
         if ((poll_fd.revents & std.posix.POLL.HUP) != 0) return .close;
 
-        client.reader.tossBuffered();
-        _ = client.reader.fill(32) catch |err| return switch (err) {
+        reader.tossBuffered();
+        _ = reader.fill(32) catch |err| return switch (err) {
             error.EndOfStream => .close,
             else => err,
         };
-        const response_type = try checkError(client);
-        if (response_type == .reply) return null;
+        const response_type = try checkError(connection);
+        if (response_type == 1) return null;
 
-        return switch (@as(Tag, @enumFromInt(@intFromEnum(response_type)))) {
-            .key_press => .{ .key_press = try client.reader.takeStruct(Key, client.endian) },
-            .key_release => .{ .key_release = try client.reader.takeStruct(Key, client.endian) },
-            .button_press => .{ .button_press = try client.reader.takeStruct(Button, client.endian) },
-            .button_release => .{ .button_release = try client.reader.takeStruct(Button, client.endian) },
-            .motion_notify => .{ .motion_notify = try client.reader.takeStruct(MotionNotify, client.endian) },
-            .enter_notify => .{ .enter_notify = try client.reader.takeStruct(EnterLeaveNotify, client.endian) },
-            .leave_notify => .{ .leave_notify = try client.reader.takeStruct(EnterLeaveNotify, client.endian) },
-            .focus_in => .{ .focus_in = try client.reader.takeStruct(FocusInOut, client.endian) },
-            .focus_out => .{ .focus_out = try client.reader.takeStruct(FocusInOut, client.endian) },
-            .keymap_notify => .{ .keymap_notify = try client.reader.takeStruct(KeymapNotify, client.endian) },
-            .expose => .{ .expose = try client.reader.takeStruct(Expose, client.endian) },
-            .graphics_expose => .{ .graphics_expose = try client.reader.takeStruct(GraphicsExpose, client.endian) },
-            .no_expose => .{ .no_expose = try client.reader.takeStruct(NoExpose, client.endian) },
-            .visibility_notify => .{ .visibility_notify = try client.reader.takeStruct(VisibilityNotify, client.endian) },
-            .create_notify => .{ .create_notify = try client.reader.takeStruct(CreateNotify, client.endian) },
-            .destroy_notify => .{ .destroy_notify = try client.reader.takeStruct(DestroyNotify, client.endian) },
-            .unmap_notify => .{ .unmap_notify = try client.reader.takeStruct(UnmapNotify, client.endian) },
-            .map_notify => .{ .map_notify = try client.reader.takeStruct(MapNotify, client.endian) },
-            .map_request => .{ .map_request = try client.reader.takeStruct(MapRequest, client.endian) },
-            .reparent_notify => .{ .reparent_notify = try client.reader.takeStruct(ReparentNotify, client.endian) },
-            .configure_notify => .{ .configure_notify = try client.reader.takeStruct(ConfigureNotify, client.endian) },
-            .configure_request => .{ .configure_request = try client.reader.takeStruct(ConfigureRequest, client.endian) },
-            .gravity_notify => .{ .gravity_notify = try client.reader.takeStruct(GravityNotify, client.endian) },
-            .resize_request => .{ .resize_request = try client.reader.takeStruct(ResizeRequest, client.endian) },
-            .circulate_notify => .{ .circulate_notify = try client.reader.takeStruct(CirculateNotify, client.endian) },
-            .circulate_request => .{ .circulate_request = try client.reader.takeStruct(CirculateRequest, client.endian) },
-            .property_notify => .{ .property_notify = try client.reader.takeStruct(PropertyNotify, client.endian) },
-            .selection_clear => .{ .selection_clear = try client.reader.takeStruct(SelectionClear, client.endian) },
-            .selection_request => .{ .selection_request = try client.reader.takeStruct(SelectionRequest, client.endian) },
-            .selection_notify => .{ .selection_notify = try client.reader.takeStruct(SelectionNotify, client.endian) },
-            .colormap_notify => .{ .colormap_notify = try client.reader.takeStruct(ColormapNotify, client.endian) },
-            .client_message => .{ .client_message = try client.reader.takeStruct(ClientMessage, client.endian) },
-            .mapping_notify => .{ .mapping_notify = try client.reader.takeStruct(MappingNotify, client.endian) },
+        return switch (@as(Tag, @enumFromInt(response_type))) {
+            .key_press => .{ .key_press = try reader.takeStruct(Key, endian) },
+            .key_release => .{ .key_release = try reader.takeStruct(Key, endian) },
+            .button_press => .{ .button_press = try reader.takeStruct(Button, endian) },
+            .button_release => .{ .button_release = try reader.takeStruct(Button, endian) },
+            .motion_notify => .{ .motion_notify = try reader.takeStruct(MotionNotify, endian) },
+            .enter_notify => .{ .enter_notify = try reader.takeStruct(EnterLeaveNotify, endian) },
+            .leave_notify => .{ .leave_notify = try reader.takeStruct(EnterLeaveNotify, endian) },
+            .focus_in => .{ .focus_in = try reader.takeStruct(FocusInOut, endian) },
+            .focus_out => .{ .focus_out = try reader.takeStruct(FocusInOut, endian) },
+            .keymap_notify => .{ .keymap_notify = try reader.takeStruct(KeymapNotify, endian) },
+            .expose => .{ .expose = try reader.takeStruct(Expose, endian) },
+            .graphics_expose => .{ .graphics_expose = try reader.takeStruct(GraphicsExpose, endian) },
+            .no_expose => .{ .no_expose = try reader.takeStruct(NoExpose, endian) },
+            .visibility_notify => .{ .visibility_notify = try reader.takeStruct(VisibilityNotify, endian) },
+            .create_notify => .{ .create_notify = try reader.takeStruct(CreateNotify, endian) },
+            .destroy_notify => .{ .destroy_notify = try reader.takeStruct(DestroyNotify, endian) },
+            .unmap_notify => .{ .unmap_notify = try reader.takeStruct(UnmapNotify, endian) },
+            .map_notify => .{ .map_notify = try reader.takeStruct(MapNotify, endian) },
+            .map_request => .{ .map_request = try reader.takeStruct(MapRequest, endian) },
+            .reparent_notify => .{ .reparent_notify = try reader.takeStruct(ReparentNotify, endian) },
+            .configure_notify => .{ .configure_notify = try reader.takeStruct(ConfigureNotify, endian) },
+            .configure_request => .{ .configure_request = try reader.takeStruct(ConfigureRequest, endian) },
+            .gravity_notify => .{ .gravity_notify = try reader.takeStruct(GravityNotify, endian) },
+            .resize_request => .{ .resize_request = try reader.takeStruct(ResizeRequest, endian) },
+            .circulate_notify => .{ .circulate_notify = try reader.takeStruct(CirculateNotify, endian) },
+            .circulate_request => .{ .circulate_request = try reader.takeStruct(CirculateRequest, endian) },
+            .property_notify => .{ .property_notify = try reader.takeStruct(PropertyNotify, endian) },
+            .selection_clear => .{ .selection_clear = try reader.takeStruct(SelectionClear, endian) },
+            .selection_request => .{ .selection_request = try reader.takeStruct(SelectionRequest, endian) },
+            .selection_notify => .{ .selection_notify = try reader.takeStruct(SelectionNotify, endian) },
+            .colormap_notify => .{ .colormap_notify = try reader.takeStruct(ColormapNotify, endian) },
+            .client_message => .{ .client_message = try reader.takeStruct(ClientMessage, endian) },
+            .mapping_notify => .{ .mapping_notify = try reader.takeStruct(MappingNotify, endian) },
 
-            _, .non_standard => .{ .non_standard = try client.reader.takeStruct(NonStandard, client.endian) },
+            _, .non_standard => .{ .non_standard = try reader.takeStruct(NonStandard, endian) },
             .close => .close,
         };
     }
 
-    pub fn send(client: Client, window: Window, propogate: bool, event: @This()) !void {
-        const request: protocol.core.event.Send = .{
-            .header = .{
-                .opcode = .send_event,
-                .detail = @intFromBool(propogate),
-                .length = 11,
-            },
-            .destination = window,
-            .event_mask = .all,
-        };
-        const atom: Atom = try .intern(Client, false, Atom.wm.protocols);
-        try client.writer.writeStruct(request, client.endian);
-        switch (event) {
-            inline else => |inner| {
-                const payload: ClientMessage = ClientMessage{
-                    .response_type = std.meta.activeTag(event),
-                    .format = .@"32",
-                    .window = window,
-                    .type = atom,
-                    .data = std.mem.toBytes(inner),
-                };
+    // pub fn send(client: Client, window: Window, propogate: bool, event: @This()) !void {
+    //     const request: protocol.core.event.Send = .{
+    //         .header = .{
+    //             .opcode = .send_event,
+    //             .detail = @intFromBool(propogate),
+    //             .length = 11,
+    //         },
+    //         .destination = window,
+    //         .event_mask = .all,
+    //     };
+    //     const atom: Atom = try .intern(Client, false, Atom.wm.protocols);
+    //     try client.writer.writeStruct(request, client.endian);
+    //     switch (event) {
+    //         inline else => |inner| {
+    //             const payload: ClientMessage = ClientMessage{
+    //                 .response_type = std.meta.activeTag(event),
+    //                 .format = .@"32",
+    //                 .window = window,
+    //                 .type = atom,
+    //                 .data = std.mem.toBytes(inner),
+    //             };
 
-                try client.writer.writeStruct(payload, client.endian);
-            },
-        }
-        try client.writer.flush();
-    }
+    //             try client.writer.writeStruct(payload, client.endian);
+    //         },
+    //     }
+    //     try client.writer.flush();
+    // }
 };
 
-fn checkError(client: Client) !protocol.core.ReplyHeader.ResponseType {
-    const response_type: protocol.core.ReplyHeader.ResponseType = @enumFromInt(try client.reader.peekInt(u8, client.endian));
+fn checkError(connection: *Client.Connection) !u8 {
+    const response_type = try connection.reader.interface.peekInt(u8, connection.client.endian);
 
-    if (response_type == .err) return switch (try client.reader.peekInt(u8, client.endian)) {
+    if (response_type == 0) return switch ((try connection.reader.interface.take(2))[1]) {
         0 => return response_type,
         1 => error.Request,
         2 => error.Value,
