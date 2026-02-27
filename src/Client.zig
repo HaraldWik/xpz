@@ -17,6 +17,8 @@ endian: std.builtin.Endian = .little,
 
 auth: ?Auth = null,
 
+verbose: bool = false,
+
 /// Provides setup information about the server, including vendor, screens, their depths, and pixel formats.
 /// The data received through these callbacks is only valid within the callback scope.
 /// Accessing it outside of these callbacks may result in undefined behavior.
@@ -109,7 +111,7 @@ pub const Request = struct {
 
         connection.sequence += 1;
 
-        std.log.info("header: {any}, request bytes: {any}", .{ header, writer.buffered()[start..end] });
+        if (connection.client.verbose) std.log.info("{any}, request bytes: {any}", .{ header, writer.buffered()[start..end] });
 
         var request: @This() = .{ .connection = connection, .opcode = header, .start = start, .end = end, .sequence = connection.sequence };
         try request.setLength(.fromBytes(end - start));
