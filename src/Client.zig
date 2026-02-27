@@ -317,10 +317,12 @@ pub const Connection = struct {
         return root_screen;
     }
 
-    pub fn destroy(self: @This()) void {
+    pub fn destroy(self: *@This()) void {
         const allocator = self.client.allocator;
         allocator.free(self.reader.interface.buffer);
         allocator.free(self.writer.interface.buffer);
+        self.reader.stream.close(self.client.io);
+        self.* = undefined;
     }
 
     pub fn flush(self: *@This()) std.Io.Writer.Error!void {
