@@ -1,6 +1,6 @@
 const std = @import("std");
 const protocol = @import("protocol.zig");
-const Client = @import("Client.zig");
+const Connection = @import("Connection.zig");
 const Extension = @import("root.zig").Extension;
 const Atom = @import("atom.zig").Atom;
 
@@ -23,7 +23,7 @@ pub const Output = enum(u32) {
     _,
 };
 
-pub fn getMonitors(client: Client, info: Extension.Info, get_active: bool) !void {
+pub fn getMonitors(client: Connection, info: Extension.Info, get_active: bool) !void {
     const request: protocol.randr.get_monitors.Request = .{
         .header = .{
             .major_opcode = info.major_opcode,

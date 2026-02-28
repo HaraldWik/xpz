@@ -4,7 +4,7 @@ pub const protocol = @import("protocol.zig");
 pub const glx = @import("glx.zig");
 pub const randr = @import("randr.zig");
 
-pub const Client = @import("Client.zig");
+pub const Connection = @import("Connection.zig");
 pub const Atom = @import("atom.zig").Atom;
 pub const Event = @import("event.zig").Event;
 pub const Window = @import("window.zig").Window;
@@ -96,7 +96,7 @@ pub const GContext = enum(u32) {
 pub const Colormap = enum(u32) {
     _,
 
-    pub fn create(self: @This(), client: Client, screen: Screen, visual_id: Visual.Id, alloc: bool) !void {
+    pub fn create(self: @This(), client: Connection, screen: Screen, visual_id: Visual.Id, alloc: bool) !void {
         const request: protocol.core.colormap.Create = .{
             .header = .{
                 .opcode = .create_colormap,
@@ -111,7 +111,7 @@ pub const Colormap = enum(u32) {
         try client.writer.flush();
     }
 
-    pub fn free(self: @This(), client: Client) void {
+    pub fn free(self: @This(), client: Connection) void {
         const request: protocol.core.colormap.Free = .{
             .colormap = self,
         };
@@ -119,7 +119,7 @@ pub const Colormap = enum(u32) {
         client.writer.flush() catch {};
     }
 
-    pub fn copyAndFree(self: @This(), client: Client, dest: @This()) !void {
+    pub fn copyAndFree(self: @This(), client: Connection, dest: @This()) !void {
         const request: protocol.core.colormap.CopyAndFree = .{
             .src = self,
             .dest = dest,
@@ -128,7 +128,7 @@ pub const Colormap = enum(u32) {
         try client.writer.flush();
     }
 
-    pub fn install(self: @This(), client: Client) !void {
+    pub fn install(self: @This(), client: Connection) !void {
         const request: protocol.core.colormap.Install = .{
             .colormap = self,
         };
@@ -136,7 +136,7 @@ pub const Colormap = enum(u32) {
         try client.writer.flush();
     }
 
-    pub fn uninstall(self: @This(), client: Client) !void {
+    pub fn uninstall(self: @This(), client: Connection) !void {
         const request: protocol.core.colormap.Uninstall = .{
             .colormap = self,
         };
@@ -187,12 +187,12 @@ pub const Extension = enum(u8) {
     };
 
     /// Returns null if extension is not present
-    pub fn query(client: Client, extension: @This()) !?Info {
+    pub fn query(client: Connection, extension: @This()) !?Info {
         return queryWithSlice(client, @tagName(extension));
     }
 
     /// Returns null if extension is not present
-    pub fn queryWithSlice(client: Client, extension: []const u8) !?Info {
+    pub fn queryWithSlice(client: Connection, extension: []const u8) !?Info {
         const request: protocol.core.extension.query.Request = .{
             .header = .{
                 .opcode = .query_extension,

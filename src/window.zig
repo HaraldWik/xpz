@@ -1,6 +1,6 @@
 const std = @import("std");
 const protocol = @import("protocol.zig");
-const Client = @import("Client.zig");
+const Connection = @import("Connection.zig");
 const Atom = @import("atom.zig").Atom;
 const Event = @import("event.zig").Event;
 const Visual = @import("root.zig").Visual;
@@ -200,7 +200,7 @@ pub const Window = enum(u32) {
         attributes: Attributes = .{},
     };
 
-    pub fn create(self: @This(), connection: *Client.Connection, config: Config) !void {
+    pub fn create(self: @This(), connection: *Connection, config: Config) !void {
         const request_value: protocol.core.window.Create = .{
             .window = self,
             .parent = config.parent,
@@ -212,32 +212,32 @@ pub const Window = enum(u32) {
             .visual_id = config.visual_id,
             .value_mask = config.attributes.mask(),
         };
-        var request = try connection.sendRequestUnflushed(.{ .core = .{ .major = .create_window, .detail = config.depth } }, request_value);
-
-        try config.attributes.write(&connection.*.writer.interface, connection.client.endian);
-        const attributes_len = connection.writer.interface.end - request.end;
-        try request.setLength(.fromBytes(request.end - request.start + attributes_len));
+        var request: Connection.Request = .{ .connection = connection };
+        try request.writeHeader(.{ .core = .{ .major = .create_window, .detail = config.depth } });
+        try request.writeValue(request_value);
+        try config.attributes.write(&connection.*.writer.interface, connection.endian);
+        try request.send();
     }
 
-    pub fn destroy(self: @This(), connection: *Client.Connection) void {
+    pub fn destroy(self: @This(), connection: *Connection) void {
         const request_value: protocol.core.window.Destroy = .{ .window = self };
-        _ = connection.sendRequestUnflushed(.{ .core = .{ .major = .destroy_window } }, request_value) catch return;
+        _ = connection.sendRequest(.{ .core = .{ .major = .destroy_window } }, request_value) catch return;
     }
 
-    pub fn map(self: @This(), connection: *Client.Connection) !void {
+    pub fn map(self: @This(), connection: *Connection) !void {
         const request_value: protocol.core.window.Map = .{ .window = self };
-        _ = try connection.sendRequestUnflushed(.{ .core = .{ .major = .map_window } }, request_value);
+        _ = try connection.sendRequest(.{ .core = .{ .major = .map_window } }, request_value);
     }
 
-    pub fn changeAttributes(self: @This(), connection: *Client.Connection, attributes: Attributes) !void {
+    pub fn changeAttributes(self: @This(), connection: *Connection, attributes: Attributes) !void {
         const request_value: protocol.core.window.ChangeAttributes = .{
             .window = self,
             .value_mask = attributes.mask(),
         };
-        _ = try connection.sendRequestUnflushed(.{ .core = .{ .major = .change_window_attributes } }, request_value);
+        _ = try connection.sendRequest(.{ .core = .{ .major = .change_window_attributes } }, request_value);
     }
 
-    pub fn clearArea(self: Window, connection: *Client.Connection, config: struct {
+    pub fn clearArea(self: Window, connection: *Connection, config: struct {
         exposures: bool = false,
         x: i16 = 0,
         y: i16 = 0,
@@ -252,10 +252,10 @@ pub const Window = enum(u32) {
             .width = config.width,
             .height = config.height,
         };
-        _ = try connection.sendRequestUnflushed(.{ .core = .{ .major = .clear_area } }, request_value);
+        _ = try connection.sendRequest(.{ .core = .{ .major = .clear_area } }, request_value);
     }
 
-    pub fn changeProperty(self: @This(), connection: *Client.Connection, mode: protocol.core.window.ChangeProperty.ChangeMode, property: Atom, @"type": Atom, format: Format, data: []const u8) !void {
+    pub fn changeProperty(self: @This(), connection: *Connection, mode: protocol.core.window.ChangeProperty.ChangeMode, property: Atom, @"type": Atom, format: Format, data: []const u8) !void {
         if (format == .@"16" and data.len % 2 != 0)
             return error.InvalidLength;
         if (format == .@"32" and data.len % 4 != 0)
@@ -276,10 +276,10 @@ pub const Window = enum(u32) {
             .data = data,
         };
 
-        _ = try connection.sendRequestUnflushed(.{ .core = .{ .major = .change_property, .detail = @intFromEnum(mode) } }, request_value);
+        _ = try connection.sendRequest(.{ .core = .{ .major = .change_property, .detail = @intFromEnum(mode) } }, request_value);
     }
 
-    pub fn setHints(self: @This(), client: Client, hints: Hints) !void {
+    pub fn setHints(self: @This(), client: Connection, hints: Hints) !void {
         try self.changeProperty(client, .append, .wm_size_hints, .atom, .@"32", &std.mem.toBytes(hints));
     }
 };

@@ -40,8 +40,7 @@ pub fn main(init: std.process.Init) !void {
 }
 
 pub const Abstraction = struct {
-    client: xpz.Client,
-    connection: xpz.Client.Connection,
+    connection: xpz.Connection,
     root_screen: xpz.Screen,
     atom_table: AtomTable,
 
@@ -49,20 +48,22 @@ pub const Abstraction = struct {
         net_wm_name: xpz.Atom,
         utf8_string: xpz.Atom,
 
-        pub fn load(connection: *xpz.Client.Connection) !@This() {
+        pub fn load(connection: *xpz.Connection) !@This() {
+            const net_wm_name_request = try xpz.Atom.internUnflushed(connection, false, xpz.Atom.net_wm.name);
+            const utf8_string_request = try xpz.Atom.internUnflushed(connection, false, xpz.Atom.utf8_string);
+
+            const net_wm_name = (try net_wm_name_request.receiveReply(xpz.protocol.core.atom.intern.Reply)).value.atom;
+            const utf8_string = (try utf8_string_request.receiveReply(xpz.protocol.core.atom.intern.Reply)).value.atom;
+
             return .{
-                .net_wm_name = try .intern(connection, false, xpz.Atom.net_wm.name),
-                .utf8_string = try .intern(connection, false, xpz.Atom.utf8_string),
+                .net_wm_name = net_wm_name,
+                .utf8_string = utf8_string,
             };
         }
     };
 
     pub fn init(minimal: std.process.Init.Minimal, allocator: std.mem.Allocator, io: std.Io) !@This() {
-        var client: xpz.Client = .{
-            .allocator = allocator,
-            .io = io,
-        };
-        var connection = try client.connectUnix(xpz.Client.Connection.default_address);
+        var connection: xpz.Connection = try .connectUnix(allocator, io, xpz.Connection.default_address, .{});
         const root_screen = try connection.setupOptions(minimal, .{
             .setup_listener = .{
                 .vendor = setup_listener.vendor,
@@ -71,7 +72,6 @@ pub const Abstraction = struct {
         });
 
         return .{
-            .client = client,
             .connection = connection,
             .root_screen = root_screen,
             .atom_table = try .load(&connection),
@@ -79,12 +79,11 @@ pub const Abstraction = struct {
     }
 
     pub fn deinit(self: *@This()) void {
-        self.connection.destroy();
+        self.connection.disconnect();
     }
 
     pub fn openWindow(self: *@This()) !void {
         const connection = &self.*.connection;
-        connection.client = &self.client;
 
         const window: xpz.Window = @enumFromInt(connection.resource_id.next());
         try window.create(connection, .{
@@ -109,8 +108,8 @@ pub const Abstraction = struct {
             },
         });
 
-        // try window.changeProperty(&connection, .replace, .wm_name, .string, .@"8", title); // This is for setting on older systems, does not support unicode (emojis)
-        // try window.changeProperty(&connection, .replace, self.atom_table.net_wm_name, self.atom_table.utf8_string, .@"8", title); // Modern way, supports unicode
+        try window.changeProperty(connection, .replace, .wm_name, .string, .@"8", title); // This is for setting on older systems, does not support unicode (emojis)
+        try window.changeProperty(connection, .replace, self.atom_table.net_wm_name, self.atom_table.utf8_string, .@"8", title); // Modern way, supports unicode
 
         try window.map(connection);
         try connection.flush();
@@ -121,7 +120,6 @@ pub const Abstraction = struct {
 
     pub fn pollEvents(self: *@This()) !void {
         const connection = &self.*.connection;
-        connection.client = &self.client;
 
         main_loop: while (true) {
             while (try xpz.Event.next(connection)) |event| switch (event) {

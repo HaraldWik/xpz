@@ -1,5 +1,4 @@
-const Client = @import("../Client.zig");
-const ResponseType = @import("../Client.zig").ReplyHeader.ResponseType;
+const Connection = @import("../Connection.zig");
 const root = @import("../root.zig");
 
 pub const Opcode = enum(u8) {
@@ -134,11 +133,11 @@ pub const setup = struct {
         auth_name_len: u16,
         auth_data_len: u16,
         pad1: u16 = undefined,
-        auth: Client.Auth,
+        auth: Connection.Auth,
     };
 
     pub const Reply = extern struct {
-        status: ResponseType,
+        status: Connection.ReplyHeader.ResponseType,
         pad0: u8,
         protocol_version_major: u16,
         protocol_version_minor: u16,

@@ -33,12 +33,8 @@ pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
     const io = init.io;
 
-    var client: xpz.Client = .{
-        .allocator = allocator,
-        .io = io,
-    };
-    var connection = try client.connectUnix(xpz.Client.Connection.default_address);
-    defer connection.destroy();
+    var connection: xpz.Connection = try .connectUnix(allocator, io, xpz.Connection.default_address, .{});
+    defer connection.disconnect();
     const root_screen = try connection.setupOptions(init.minimal, .{
         .setup_listener = .{
             .vendor = setup_listener.vendor,
@@ -46,8 +42,11 @@ pub fn main(init: std.process.Init) !void {
         },
     });
 
-    const net_wm_name: xpz.Atom = try .intern(&connection, false, xpz.Atom.net_wm.name);
-    const utf8_string: xpz.Atom = try .intern(&connection, false, xpz.Atom.utf8_string);
+    const net_wm_name_request = try xpz.Atom.internUnflushed(&connection, false, xpz.Atom.net_wm.name);
+    const utf8_string_request = try xpz.Atom.internUnflushed(&connection, false, xpz.Atom.utf8_string);
+
+    const net_wm_name = (try net_wm_name_request.receiveReply(xpz.protocol.core.atom.intern.Reply)).value.atom;
+    const utf8_string = (try utf8_string_request.receiveReply(xpz.protocol.core.atom.intern.Reply)).value.atom;
 
     std.log.info("net_wm_name: {d}", .{@intFromEnum(net_wm_name)});
     std.log.info("utf8_string: {d}", .{@intFromEnum(utf8_string)});
@@ -101,6 +100,11 @@ pub fn main(init: std.process.Init) !void {
             },
             .button_press, .button_release => |button| {
                 std.log.info("{t}: {t}", .{ event, button.button() });
+                if (button.button() == .right) {
+                    try window.changeProperty(&connection, .replace, .wm_name, .string, .@"8", "Wow!"); // This is for setting on older systems, does not support unicode (emojis)
+                    try window.changeProperty(&connection, .replace, net_wm_name, utf8_string, .@"8", "Wow!"); // Modern way, supports unicode
+                    try connection.flush();
+                }
             },
             .keymap_notify => |map| {
                 std.log.info("keymap_notify: {d} {any}", .{ map.detail, map.keys });

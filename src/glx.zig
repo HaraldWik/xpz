@@ -1,6 +1,6 @@
 const std = @import("std");
 const protocol = @import("protocol.zig");
-const Client = @import("Client.zig");
+const Connection = @import("Connection.zig");
 const Extension = @import("root.zig").Extension;
 const Screen = @import("root.zig").Screen;
 const Visual = @import("root.zig").Visual;
@@ -57,7 +57,7 @@ pub const Context = enum(u32) {
         _,
     };
 
-    pub fn create(self: @This(), client: Client, info: Extension.Info, visual_id: Visual.Id, screen: Screen) !void {
+    pub fn create(self: @This(), client: Connection, info: Extension.Info, visual_id: Visual.Id, screen: Screen) !void {
         _ = screen;
         const request: protocol.glx.CreateContext = .{
             .header = .{
@@ -75,7 +75,7 @@ pub const Context = enum(u32) {
         try client.writer.flush();
     }
 
-    pub fn makeCurrent(self: @This(), client: Client, info: Extension.Info, drawable: Drawable, screen: Screen) !Tag {
+    pub fn makeCurrent(self: @This(), client: Connection, info: Extension.Info, drawable: Drawable, screen: Screen) !Tag {
         _ = screen;
         const request: protocol.glx.make_current.Request = .{
             .header = .{
@@ -96,7 +96,7 @@ pub const Context = enum(u32) {
 };
 
 /// Returns the glx version that the server supports
-pub fn queryVersion(client: Client, info: Extension.Info) !protocol.common.Version {
+pub fn queryVersion(client: Connection, info: Extension.Info) !protocol.common.Version {
     const request: protocol.glx.query_version.Request = .{
         .header = .{
             .major_opcode = info.major_opcode,
@@ -112,7 +112,7 @@ pub fn queryVersion(client: Client, info: Extension.Info) !protocol.common.Versi
     return reply.version;
 }
 
-pub fn chooseVisual(client: Client, info: Extension.Info, screen: Screen, attributes: []const Attribute) !Visual.Info {
+pub fn chooseVisual(client: Connection, info: Extension.Info, screen: Screen, attributes: []const Attribute) !Visual.Info {
     const request: protocol.glx.get_visual_configs.Request = .{
         .header = .{
             .major_opcode = info.major_opcode,
@@ -163,7 +163,7 @@ pub fn chooseVisual(client: Client, info: Extension.Info, screen: Screen, attrib
     };
 }
 
-pub fn swapBuffers(client: Client, info: Extension.Info, drawable: Drawable, context_tag: Context.Tag) !void {
+pub fn swapBuffers(client: Connection, info: Extension.Info, drawable: Drawable, context_tag: Context.Tag) !void {
     const request: protocol.glx.SwapBuffers = .{
         .header = .{
             .major_opcode = info.major_opcode,

@@ -1,6 +1,6 @@
 const std = @import("std");
 const protocol = @import("protocol.zig");
-const Client = @import("Client.zig");
+const Connection = @import("Connection.zig");
 const Atom = @import("atom.zig").Atom;
 const Window = @import("window.zig").Window;
 const Format = @import("root.zig").Format;
@@ -83,7 +83,7 @@ pub const Event = union(Tag) {
     };
 
     pub const Header = extern struct {
-        response_type: @import("Client.zig").ReplyHeader.ResponseType,
+        response_type: Connection.ReplyHeader.ResponseType,
         detail: u8,
         sequence: u16,
     };
@@ -216,7 +216,7 @@ pub const Event = union(Tag) {
     };
 
     pub const KeymapNotify = extern struct {
-        response_type: @import("Client.zig").ReplyHeader.ResponseType,
+        response_type: Connection.ReplyHeader.ResponseType,
         detail: u8,
         keys: [30]u8,
     };
@@ -526,8 +526,8 @@ pub const Event = union(Tag) {
         };
     };
 
-    pub fn next(connection: *Client.Connection) !?@This() {
-        const endian = connection.client.endian;
+    pub fn next(connection: *Connection) !?@This() {
+        const endian = connection.endian;
         const reader = &connection.*.reader.interface;
 
         var poll_fds = [_]std.posix.pollfd{.{
@@ -622,8 +622,8 @@ pub const Event = union(Tag) {
     // }
 };
 
-fn checkError(connection: *Client.Connection) !u8 {
-    const response_type = try connection.reader.interface.peekInt(u8, connection.client.endian);
+fn checkError(connection: *Connection) !u8 {
+    const response_type = try connection.reader.interface.peekInt(u8, connection.endian);
 
     if (response_type == 0) return switch ((try connection.reader.interface.take(2))[1]) {
         0 => return response_type,
