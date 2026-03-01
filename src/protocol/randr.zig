@@ -1,3 +1,5 @@
+const root = @import("../root.zig");
+
 pub const Opcode = enum(u8) {
     query_version = 1,
     set_screen_config = 2,
@@ -39,4 +41,20 @@ pub const Opcode = enum(u8) {
     get_monitors = 42,
     set_monitor = 43,
     delete_monitor = 44,
+};
+
+pub const get_monitors = struct {
+    pub const Request = extern struct {
+        window: root.Window, // root window
+        get_active: bool, // true = only active monitors, false = all
+        pad0: [3]u8 = undefined,
+    };
+
+    pub const Reply = extern struct {
+        timestamp: u32,
+        monitor_count: u32,
+        output_count: u32,
+
+        pad0: u64 = undefined,
+    };
 };

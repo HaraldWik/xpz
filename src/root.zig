@@ -96,52 +96,37 @@ pub const GContext = enum(u32) {
 pub const Colormap = enum(u32) {
     _,
 
-    pub fn create(self: @This(), client: Connection, screen: Screen, visual_id: Visual.Id, alloc: bool) !void {
-        const request: protocol.core.colormap.Create = .{
-            .header = .{
-                .opcode = .create_colormap,
-                .detail = @intFromBool(alloc),
-                .length = @sizeOf(protocol.core.colormap.Create) + 3,
-            },
+    pub fn create(self: @This(), connection: *Connection, screen: Screen, visual_id: Visual.Id, alloc: bool) !void {
+        const request_value: protocol.core.colormap.Create = .{
             .colormap = self,
             .window = screen.window,
             .visual_id = visual_id,
         };
-        try client.writer.writeStruct(request, client.endian);
-        try client.writer.flush();
+        try connection.writer.flush();
+        _ = try connection.sendRequest(.{ .core = .{ .major = .colormap_create, .detail = @intFromBool(alloc) } }, request_value);
     }
 
-    pub fn free(self: @This(), client: Connection) void {
-        const request: protocol.core.colormap.Free = .{
-            .colormap = self,
-        };
-        client.writer.writeStruct(request, client.endian) catch {};
-        client.writer.flush() catch {};
+    pub fn free(self: @This(), connection: *Connection) void {
+        const request_value: protocol.core.colormap.Free = .{ .colormap = self };
+        _ = try connection.sendRequest(.{ .core = .{ .major = .colormap_free } }, request_value);
     }
 
-    pub fn copyAndFree(self: @This(), client: Connection, dest: @This()) !void {
-        const request: protocol.core.colormap.CopyAndFree = .{
+    pub fn copyAndFree(self: @This(), connection: *Connection, dest: @This()) !void {
+        const request_value: protocol.core.colormap.CopyAndFree = .{
             .src = self,
             .dest = dest,
         };
-        try client.writer.writeStruct(request, client.endian);
-        try client.writer.flush();
+        _ = try connection.sendRequest(.{ .core = .{ .major = .colormap_copy_and_free } }, request_value);
     }
 
-    pub fn install(self: @This(), client: Connection) !void {
-        const request: protocol.core.colormap.Install = .{
-            .colormap = self,
-        };
-        try client.writer.writeStruct(request, client.endian);
-        try client.writer.flush();
+    pub fn install(self: @This(), connection: *Connection) !void {
+        const request_value: protocol.core.colormap.Install = .{ .colormap = self };
+        _ = try connection.sendRequest(.{ .core = .{ .major = .colormap_install } }, request_value);
     }
 
-    pub fn uninstall(self: @This(), client: Connection) !void {
-        const request: protocol.core.colormap.Uninstall = .{
-            .colormap = self,
-        };
-        try client.writer.writeStruct(request, client.endian);
-        try client.writer.flush();
+    pub fn uninstall(self: @This(), connection: *Connection) !void {
+        const request_value: protocol.core.colormap.Uninstall = .{ .colormap = self };
+        _ = try connection.sendRequest(.{ .core = .{ .major = .colormap_uninstall } }, request_value);
     }
 };
 
@@ -187,31 +172,23 @@ pub const Extension = enum(u8) {
     };
 
     /// Returns null if extension is not present
-    pub fn query(client: Connection, extension: @This()) !?Info {
-        return queryWithSlice(client, @tagName(extension));
+    pub fn query(connection: *Connection, extension: @This()) !?Info {
+        return queryWithSlice(connection, @tagName(extension));
     }
 
     /// Returns null if extension is not present
-    pub fn queryWithSlice(client: Connection, extension: []const u8) !?Info {
-        const request: protocol.core.extension.query.Request = .{
-            .header = .{
-                .opcode = .query_extension,
-                .length = .fromWords(@intCast((@sizeOf(protocol.core.extension.query.Request) + ((extension.len + 3) & ~@as(usize, 3))) / 4)),
-            },
+    pub fn queryWithSlice(connection: *Connection, extension: []const u8) !?Info {
+        const request_value: protocol.core.extension.query.Request = .{
             .name_len = @intCast(extension.len),
+            .name = extension,
         };
-        try client.writer.writeStruct(request, client.endian);
-        try client.writer.writeAll(extension);
-        _ = try client.writer.splatByte(0, (4 - (client.writer.end % 4)) % 4); // Padding
-        try client.writer.flush();
+        var request = try connection.sendRequest(.{ .core = .{ .major = .extension_query } }, request_value);
+        const reply = try request.receiveReply(protocol.core.extension.query.Reply);
 
-        try client.reader.fillMore();
-        const reply = try client.reader.takeStruct(protocol.core.extension.query.Reply, client.endian);
-
-        return if (reply.present) .{
-            .major_opcode = reply.major_opcode,
-            .first_event = reply.first_event,
-            .first_error = reply.first_error,
+        return if (reply.value.present) .{
+            .major_opcode = reply.value.major_opcode,
+            .first_event = reply.value.first_event,
+            .first_error = reply.value.first_error,
         } else null;
     }
 };

@@ -142,12 +142,12 @@ pub const Window = enum(u32) {
         }
     };
 
-    pub const Property = union(enum) {
-        bytes: []const u8,
-        u16s: []const u16,
-        u32s: []const u32,
-        atoms: []const Atom,
-    };
+    // pub const Property = union(enum) {
+    //     bytes: []const u8,
+    //     u16s: []const u16,
+    //     u32s: []const u32,
+    //     atoms: []const Atom,
+    // };
 
     /// Same as XSizeHints
     pub const Hints = extern struct {
@@ -279,7 +279,7 @@ pub const Window = enum(u32) {
         _ = try connection.sendRequest(.{ .core = .{ .major = .change_property, .detail = @intFromEnum(mode) } }, request_value);
     }
 
-    pub fn setHints(self: @This(), client: Connection, hints: Hints) !void {
-        try self.changeProperty(client, .append, .wm_size_hints, .atom, .@"32", &std.mem.toBytes(hints));
+    pub fn setHints(self: @This(), connection: Connection, hints: Hints) !void {
+        try self.changeProperty(connection, .append, .wm_size_hints, .atom, .@"32", &std.mem.toBytes(hints));
     }
 };

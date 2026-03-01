@@ -51,8 +51,12 @@ pub fn main(init: std.process.Init) !void {
     std.log.info("net_wm_name: {d}", .{@intFromEnum(net_wm_name)});
     std.log.info("utf8_string: {d}", .{@intFromEnum(utf8_string)});
 
-    // const randr = try xpz.Extension.query(client, .RANDR) orelse return error.RandrUnsupported;
-    // try xpz.randr.getMonitors(client, randr, true);
+    const randr = try xpz.Extension.query(&connection, .RANDR) orelse return error.RandrUnsupported;
+    const glx = try xpz.Extension.query(&connection, .GLX) orelse return error.RandrUnsupported;
+    std.debug.print("randr: {any}\n", .{randr});
+    std.debug.print("glx: {any}\n", .{glx});
+
+    try xpz.randr.getMonitors(&connection, randr, root_screen, true);
 
     const window: xpz.Window = @enumFromInt(connection.resource_id.next());
     try window.create(&connection, .{

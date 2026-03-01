@@ -46,22 +46,22 @@ pub const Opcode = enum(u8) {
     set_input_focus = 42,
     get_input_focus = 43,
     query_keymap = 44,
-    open_font = 45,
-    close_font = 46,
-    query_font = 47,
+    font_open = 45,
+    font_close = 46,
+    font_query = 47,
     query_text_extents = 48,
-    list_fonts = 49,
-    list_fonts_with_info = 50,
-    set_font_path = 51,
-    get_font_path = 52,
-    create_pixmap = 53,
-    free_pixmap = 54,
-    create_gc = 55,
-    change_gc = 56,
-    copy_gc = 57,
+    fonts_list = 49,
+    fonts_list_with_info = 50,
+    font_set_path = 51,
+    font_get_path = 52,
+    pixmap_create = 53,
+    pixmap_free = 54,
+    gc_create = 55,
+    gc_change = 56,
+    gc_copy = 57,
     set_dashes = 58,
     set_clip_rectangles = 59,
-    free_gc = 60,
+    gc_free = 60,
     clear_area = 61,
     copy_area = 62,
     copy_plane = 63,
@@ -79,12 +79,12 @@ pub const Opcode = enum(u8) {
     poly_text16 = 75,
     image_text8 = 76,
     image_text16 = 77,
-    create_colormap = 78,
-    free_colormap = 79,
-    copy_colormap_and_free = 80,
-    install_colormap = 81,
-    uninstall_colormap = 82,
-    list_installed_colormaps = 83,
+    colormap_create = 78,
+    colormap_free = 79,
+    colormap_copy_and_free = 80,
+    colormap_install = 81,
+    colormap_uninstall = 82,
+    colormaps_list_installed = 83,
     alloc_color = 84,
     alloc_named_color = 85,
     alloc_color_cells = 86,
@@ -99,8 +99,8 @@ pub const Opcode = enum(u8) {
     free_cursor = 95,
     recolor_cursor = 96,
     query_best_size = 97,
-    query_extension = 98,
-    list_extensions = 99,
+    extension_query = 98,
+    extensions_list = 99,
     change_keyboard_mapping = 100,
     get_keyboard_mapping = 101,
     change_keyboard_control = 102,
@@ -110,8 +110,8 @@ pub const Opcode = enum(u8) {
     get_pointer_control = 106,
     set_screen_saver = 107,
     get_screen_saver = 108,
-    change_hosts = 109,
-    list_hosts = 110,
+    hosts_change = 109,
+    hosts_list = 110,
     set_access_control = 111,
     set_close_down_mode = 112,
     kill_client = 113,
@@ -159,7 +159,7 @@ pub const setup = struct {
         pad1: u32,
     };
 
-    pub const PixmapFormat = extern struct {
+    pub const PixmapFormat = struct {
         depth: u8,
         bits_per_pixel: u8,
         scanline_pad: u8,
@@ -195,7 +195,7 @@ pub const atom = struct {
 };
 
 pub const window = struct {
-    pub const Create = extern struct {
+    pub const Create = struct {
         // .detail = depth
         window: root.Window,
         parent: root.Window, // screen root or parent
@@ -262,9 +262,63 @@ pub const window = struct {
 };
 
 pub const event = struct {
-    pub const Send = extern struct {
+    pub const Send = struct {
         // .detail = propagate (bool)
         destination: root.Window,
         event_mask: root.Event.Mask,
+    };
+};
+
+pub const colormap = struct {
+    pub const Create = struct {
+        /// .detail =  AllocNone = 0, AllocAll = 1
+        colormap: root.Colormap,
+        window: root.Window,
+        visual_id: root.Visual.Id,
+    };
+    pub const Free = struct {
+        colormap: root.Colormap,
+    };
+
+    pub const CopyAndFree = struct {
+        dest: root.Colormap,
+        src: root.Colormap,
+    };
+
+    pub const Install = struct {
+        colormap: root.Colormap,
+    };
+
+    pub const Uninstall = struct {
+        colormap: root.Colormap,
+    };
+
+    pub const list_installed = struct {
+        pub const Request = struct {
+            window: root.Window,
+        };
+
+        pub const Reply = struct {
+            colormap_count: u16,
+            pad0: [22]u8,
+        };
+    };
+};
+
+pub const extension = struct {
+    pub const query = struct {
+        pub const Request = struct {
+            name_len: u16,
+            pad0: u16 = undefined,
+            name: []const u8,
+        };
+
+        pub const Reply = struct {
+            present: bool,
+            major_opcode: u8,
+            first_event: u8,
+            first_error: u8,
+            pad0: [20]u8,
+        };
     };
 };

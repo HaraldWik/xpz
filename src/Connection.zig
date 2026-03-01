@@ -12,7 +12,6 @@ reader: std.Io.net.Stream.Reader,
 writer: std.Io.net.Stream.Writer,
 sequence: u16 = 0,
 resource_id: ResourceId = .{},
-mutex: std.Io.Mutex = .init,
 
 pub const default_address: std.Io.net.UnixAddress = .{ .path = "/tmp/.X11-unix/X0" };
 
@@ -199,7 +198,7 @@ pub const Request = struct {
                 continue;
             } else @compileError("can not read non u8 array"),
             .int => try reader.takeInt(field.type, endian),
-            .bool => (try reader.takeInt(field.type, endian)) == 1,
+            .bool => (try reader.takeInt(u8, endian)) == 1,
             .@"enum" => try reader.takeEnum(field.type, endian),
             .@"struct" => try readValue(reader, endian, T),
             else => @compileError("can not read type of " ++ @typeName(field.type) ++ " aka " ++ @tagName(@typeInfo(field.type))),

@@ -3,6 +3,7 @@ const protocol = @import("protocol.zig");
 const Connection = @import("Connection.zig");
 const Extension = @import("root.zig").Extension;
 const Atom = @import("atom.zig").Atom;
+const Screen = @import("root.zig").Screen;
 
 pub const MonitorInfo = extern struct {
     name: Atom,
@@ -23,26 +24,21 @@ pub const Output = enum(u32) {
     _,
 };
 
-pub fn getMonitors(client: Connection, info: Extension.Info, get_active: bool) !void {
-    const request: protocol.randr.get_monitors.Request = .{
-        .header = .{
-            .major_opcode = info.major_opcode,
-            .minor_opcode = .get_monitors,
-            .length = .fromBytes(@sizeOf(protocol.randr.get_monitors.Request)),
-        },
-        .window = client.root_screen.window,
+/// Screen is usualy root screen
+pub fn getMonitors(connection: *Connection, info: Extension.Info, screen: Screen, get_active: bool) !void {
+    const request_value: protocol.randr.get_monitors.Request = .{
+        .window = screen.window,
         .get_active = get_active,
     };
-    try client.writer.writeStruct(request, client.endian);
-    try client.writer.flush();
+    var request = try connection.sendRequest(.{ .randr = .{ .major = info.major_opcode, .minor = .get_monitors } }, request_value);
+    const reply = try request.receiveReply(protocol.randr.get_monitors.Reply);
 
-    client.reader.tossBuffered();
-    try client.reader.fillMore();
-    const reply = try client.reader.takeStruct(protocol.randr.get_monitors.Reply, client.endian);
-    for (0..reply.monitor_count) |i| {
+    var reader = &connection.*.reader.interface;
+
+    for (0..reply.value.monitor_count) |i| {
         _ = i;
         std.debug.print("monitor: \n", .{});
-        const monitor_info = try client.reader.takeStruct(MonitorInfo, client.endian);
+        const monitor_info = try reader.takeStruct(MonitorInfo, connection.endian);
         std.debug.print(
             \\  primary: {s}
             \\  automatic: {s}
@@ -61,12 +57,12 @@ pub fn getMonitors(client: Connection, info: Extension.Info, get_active: bool) !
             monitor_info.height_mm,
         });
 
-        const name = try monitor_info.name.getName(client);
+        const name = try monitor_info.name.getName(connection);
         std.debug.print("monitor name: {s}\n", .{name});
 
         for (0..monitor_info.output_count) |j| {
             _ = j;
-            const output = try client.reader.takeEnum(Output, client.endian);
+            const output = try reader.takeEnum(Output, connection.endian);
             std.debug.print("\toutput: {d}\n", .{@intFromEnum(output)});
         }
     }
