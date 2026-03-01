@@ -56,7 +56,7 @@ pub fn main(init: std.process.Init) !void {
     std.debug.print("randr: {any}\n", .{randr});
     std.debug.print("glx: {any}\n", .{glx});
 
-    try xpz.randr.getMonitors(&connection, randr, root_screen, true);
+    // try xpz.randr.getMonitors(&connection, randr, root_screen, true);
 
     const window: xpz.Window = @enumFromInt(connection.resource_id.next());
     try window.create(&connection, .{

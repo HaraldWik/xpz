@@ -122,9 +122,6 @@ pub const Request = struct {
 
     pub fn send(self: *@This()) !void {
         if (self.sequence != null) return error.AlreadySent;
-        const io = self.connection.writer.io;
-        self.connection.mutex.lockUncancelable(io);
-        defer self.connection.mutex.unlock(io);
         try self.updateHeader();
         self.connection.sequence += 1;
         self.sequence = self.connection.sequence;
@@ -166,13 +163,9 @@ pub const Request = struct {
 
     pub fn receiveReply(self: @This(), T: type) !Reply(T) {
         const sequence = self.sequence orelse return error.RequestNotSent;
-        const io = self.connection.reader.io;
 
         const endian = self.connection.endian;
         const reader = &self.connection.*.reader.interface;
-
-        self.connection.mutex.lockUncancelable(io);
-        defer self.connection.mutex.unlock(io);
 
         if (reader.bufferedLen() < @sizeOf(Reply(T))) {
             try self.connection.flush();
