@@ -11,6 +11,7 @@ endian: std.builtin.Endian,
 reader: std.Io.net.Stream.Reader,
 writer: std.Io.net.Stream.Writer,
 sequence: u16 = 0,
+setup_info: ?protocol.core.setup.Reply = null,
 resource_id: ResourceId = .{},
 
 pub const default_address: std.Io.net.UnixAddress = .{ .path = "/tmp/.X11-unix/X0" };
@@ -370,6 +371,7 @@ pub fn setupOptions(self: *@This(), minimal: std.process.Init.Minimal, options: 
         .base = reply.resource_id_base,
         .mask = reply.resource_id_mask,
     };
+    self.setup_info = reply;
     return root_screen;
 }
 
