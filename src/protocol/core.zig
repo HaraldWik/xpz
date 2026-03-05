@@ -1,5 +1,6 @@
-const Connection = @import("../Connection.zig");
 const root = @import("../root.zig");
+const Auth = @import("../Display/Auth.zig");
+const ResponseType = @import("../Display/Connection.zig").Reply.Header.ResponseType;
 
 pub const Opcode = enum(u8) {
     create_window = 1,
@@ -133,11 +134,11 @@ pub const setup = struct {
         auth_name_len: u16,
         auth_data_len: u16,
         pad1: u16 = undefined,
-        auth: Connection.Auth,
+        auth: Auth,
     };
 
     pub const Reply = extern struct {
-        status: Connection.ReplyHeader.ResponseType,
+        status: ResponseType,
         pad0: u8,
         protocol_version_major: u16,
         protocol_version_minor: u16,
@@ -172,14 +173,11 @@ pub const atom = struct {
         pub const Request = struct {
             /// len in bytes
             name_len: u16,
-            pad0: u16 = undefined,
+            pad0: u16 = 0,
             name: []const u8,
         };
 
-        pub const Reply = struct {
-            atom: root.Atom,
-            pad0: [20]u8 = undefined,
-        };
+        pub const Reply = root.Atom;
     };
 
     pub const get_name = struct {
@@ -240,7 +238,7 @@ pub const window = struct {
         property: root.Atom,
         type: root.Atom,
         format: root.Format,
-        pad0: [3]u8 = undefined,
+        pad0: [3]u8 = @splat(0),
         element_count: u32,
         data: []const u8,
 
@@ -309,7 +307,7 @@ pub const extension = struct {
     pub const query = struct {
         pub const Request = struct {
             name_len: u16,
-            pad0: u16 = undefined,
+            pad0: u16 = 0,
             name: []const u8,
         };
 
@@ -318,7 +316,7 @@ pub const extension = struct {
             major_opcode: u8,
             first_event: u8,
             first_error: u8,
-            pad0: [20]u8,
+            pad0: [20]u8 = @splat(0),
         };
     };
 };

@@ -1,15 +1,11 @@
-const std = @import("std");
-
 pub const protocol = @import("protocol.zig");
-pub const glx = @import("glx.zig");
-pub const randr = @import("randr.zig");
 
-pub const Connection = @import("Connection.zig");
+pub const Display = @import("Display.zig");
 pub const Atom = @import("atom.zig").Atom;
-pub const Event = @import("event.zig").Event;
 pub const Window = @import("window.zig").Window;
+pub const Event = @import("Event.zig");
 
-pub const PixmapFormat = extern struct {
+pub const PixmapFormat = struct {
     depth: u8,
     bits_per_pixel: u8,
     scanline_pad: u8,
@@ -96,38 +92,38 @@ pub const GContext = enum(u32) {
 pub const Colormap = enum(u32) {
     _,
 
-    pub fn create(self: @This(), connection: *Connection, screen: Screen, visual_id: Visual.Id, alloc: bool) !void {
-        const request_value: protocol.core.colormap.Create = .{
-            .colormap = self,
-            .window = screen.window,
-            .visual_id = visual_id,
-        };
-        try connection.writer.flush();
-        _ = try connection.sendRequest(.{ .core = .{ .major = .colormap_create, .detail = @intFromBool(alloc) } }, request_value);
-    }
+    // pub fn create(self: @This(), connection: *Connection, screen: Screen, visual_id: Visual.Id, alloc: bool) !void {
+    //     const request_value: protocol.core.colormap.Create = .{
+    //         .colormap = self,
+    //         .window = screen.window,
+    //         .visual_id = visual_id,
+    //     };
+    //     try connection.writer.flush();
+    //     _ = try connection.sendRequest(.{ .core = .{ .major = .colormap_create, .detail = @intFromBool(alloc) } }, request_value);
+    // }
 
-    pub fn free(self: @This(), connection: *Connection) void {
-        const request_value: protocol.core.colormap.Free = .{ .colormap = self };
-        _ = try connection.sendRequest(.{ .core = .{ .major = .colormap_free } }, request_value);
-    }
+    // pub fn free(self: @This(), connection: *Connection) void {
+    //     const request_value: protocol.core.colormap.Free = .{ .colormap = self };
+    //     _ = try connection.sendRequest(.{ .core = .{ .major = .colormap_free } }, request_value);
+    // }
 
-    pub fn copyAndFree(self: @This(), connection: *Connection, dest: @This()) !void {
-        const request_value: protocol.core.colormap.CopyAndFree = .{
-            .src = self,
-            .dest = dest,
-        };
-        _ = try connection.sendRequest(.{ .core = .{ .major = .colormap_copy_and_free } }, request_value);
-    }
+    // pub fn copyAndFree(self: @This(), connection: *Connection, dest: @This()) !void {
+    //     const request_value: protocol.core.colormap.CopyAndFree = .{
+    //         .src = self,
+    //         .dest = dest,
+    //     };
+    //     _ = try connection.sendRequest(.{ .core = .{ .major = .colormap_copy_and_free } }, request_value);
+    // }
 
-    pub fn install(self: @This(), connection: *Connection) !void {
-        const request_value: protocol.core.colormap.Install = .{ .colormap = self };
-        _ = try connection.sendRequest(.{ .core = .{ .major = .colormap_install } }, request_value);
-    }
+    // pub fn install(self: @This(), connection: *Connection) !void {
+    //     const request_value: protocol.core.colormap.Install = .{ .colormap = self };
+    //     _ = try connection.sendRequest(.{ .core = .{ .major = .colormap_install } }, request_value);
+    // }
 
-    pub fn uninstall(self: @This(), connection: *Connection) !void {
-        const request_value: protocol.core.colormap.Uninstall = .{ .colormap = self };
-        _ = try connection.sendRequest(.{ .core = .{ .major = .colormap_uninstall } }, request_value);
-    }
+    // pub fn uninstall(self: @This(), connection: *Connection) !void {
+    //     const request_value: protocol.core.colormap.Uninstall = .{ .colormap = self };
+    //     _ = try connection.sendRequest(.{ .core = .{ .major = .colormap_uninstall } }, request_value);
+    // }
 };
 
 pub const Cursor = enum(u32) {
@@ -171,24 +167,24 @@ pub const Extension = enum(u8) {
         first_error: u8,
     };
 
-    /// Returns null if extension is not present
-    pub fn query(connection: *Connection, extension: @This()) !?Info {
-        return queryWithSlice(connection, @tagName(extension));
-    }
+    // /// Returns null if extension is not present
+    // pub fn query(connection: *Connection, extension: @This()) !?Info {
+    //     return queryWithSlice(connection, @tagName(extension));
+    // }
 
-    /// Returns null if extension is not present
-    pub fn queryWithSlice(connection: *Connection, extension: []const u8) !?Info {
-        const request_value: protocol.core.extension.query.Request = .{
-            .name_len = @intCast(extension.len),
-            .name = extension,
-        };
-        var request = try connection.sendRequest(.{ .core = .{ .major = .extension_query } }, request_value);
-        const reply = try request.receiveReply(protocol.core.extension.query.Reply);
+    // /// Returns null if extension is not present
+    // pub fn queryWithSlice(connection: *Connection, extension: []const u8) !?Info {
+    //     const request_value: protocol.core.extension.query.Request = .{
+    //         .name_len = @intCast(extension.len),
+    //         .name = extension,
+    //     };
+    //     var request = try connection.sendRequest(.{ .core = .{ .major = .extension_query } }, request_value);
+    //     const reply = try request.receiveReply(protocol.core.extension.query.Reply);
 
-        return if (reply.value.present) .{
-            .major_opcode = reply.value.major_opcode,
-            .first_event = reply.value.first_event,
-            .first_error = reply.value.first_error,
-        } else null;
-    }
+    //     return if (reply.value.present) .{
+    //         .major_opcode = reply.value.major_opcode,
+    //         .first_event = reply.value.first_event,
+    //         .first_error = reply.value.first_error,
+    //     } else null;
+    // }
 };

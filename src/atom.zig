@@ -1,6 +1,6 @@
 const std = @import("std");
 const protocol = @import("protocol.zig");
-const Connection = @import("Connection.zig");
+const Display = @import("Display.zig");
 
 pub const Atom = enum(u32) {
     none = 0,
@@ -152,34 +152,29 @@ pub const Atom = enum(u32) {
         pub const close_windoww = "_NET_CLOSE_WINDOW";
     };
 
-    pub fn intern(connection: *Connection, only_if_exists: bool, name: []const u8) !@This() {
-        var request = try internUnflushed(connection, only_if_exists, name);
-        const reply = try request.receiveReply(protocol.core.atom.intern.Reply);
-        return reply.value.atom;
-    }
-
-    /// Better when you are fetching multiple atoms at the same time
-    pub fn internUnflushed(connection: *Connection, only_if_exists: bool, name: []const u8) !Connection.Request {
-        const request_value: protocol.core.atom.intern.Request = .{
+    pub fn intern(display: *Display, only_if_exists: bool, name: []const u8) !Display.Cookie(@This()) {
+        const request_value = protocol.core.atom.intern.Request{
             .name_len = @intCast(name.len),
             .name = name,
         };
-        var request: Connection.Request = .{ .connection = connection };
-        try request.writeHeader(.{ .core = .{ .major = .intern_atom, .detail = @intFromBool(only_if_exists) } });
-        try request.writeValue(request_value);
-        try request.send();
+        const request = try display.sendRequestWithReply(
+            .{ .major_opcode = .core(.intern_atom), .minor_opcode = .fromInt(@intFromBool(only_if_exists)) },
+            request_value,
+            @This(),
+        );
         return request;
     }
 
     /// The returned slice points into the reader buffer and is not guaranteed to be valid after more calls,
     /// recommended to use allocator.dupe or store it into a buffer
-    pub fn getName(self: @This(), connection: *Connection) ![]const u8 {
-        const request_value: protocol.core.atom.get_name.Request = .{ .atom = self };
-        var request: Connection.Request = .{ .connection = connection };
-        try request.writeHeader(.{ .core = .{ .major = .get_atom_name } });
-        try request.writeValue(request_value);
-        try request.send();
-        const reply = try request.receiveReply(protocol.core.atom.get_name.Reply);
-        return connection.reader.interface.take(reply.value.name_len);
+    pub fn getName(self: @This(), display: *Display) ![]const u8 {
+        const request_value = protocol.core.atom.get_name.Request{ .atom = self };
+        const request = try display.sendRequestWithReply(
+            .{ .major_opcode = .core(.intern_atom) },
+            request_value,
+            protocol.core.atom.get_name.Reply,
+        );
+        request.getReply();
+        return request;
     }
 };
