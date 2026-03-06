@@ -168,30 +168,6 @@ pub const setup = struct {
     };
 };
 
-pub const atom = struct {
-    pub const intern = struct {
-        pub const Request = struct {
-            /// len in bytes
-            name_len: u16,
-            pad0: u16 = 0,
-            name: []const u8,
-        };
-
-        pub const Reply = root.Atom;
-    };
-
-    pub const get_name = struct {
-        pub const Request = struct {
-            atom: root.Atom,
-        };
-
-        pub const Reply = struct {
-            name_len: u32,
-            pad0: [24]u8,
-        };
-    };
-};
-
 pub const window = struct {
     pub const Create = struct {
         // .detail = depth
@@ -259,13 +235,13 @@ pub const window = struct {
     };
 };
 
-pub const event = struct {
-    pub const Send = struct {
-        // .detail = propagate (bool)
-        destination: root.Window,
-        event_mask: root.Event.Mask,
-    };
-};
+pub const pixmap = struct {};
+
+pub const cursor = struct {};
+
+pub const font = struct {};
+
+pub const gcontext = struct {};
 
 pub const colormap = struct {
     pub const Create = struct {
@@ -303,6 +279,38 @@ pub const colormap = struct {
     };
 };
 
+pub const atom = struct {
+    pub const intern = struct {
+        pub const Request = struct {
+            /// len in bytes
+            name_len: u16,
+            pad0: u16 = 0,
+            name: []const u8,
+        };
+
+        pub const Reply = root.Atom;
+    };
+
+    pub const get_name = struct {
+        pub const Request = struct {
+            atom: root.Atom,
+        };
+
+        pub const Reply = struct {
+            name_len: u32,
+            pad0: [24]u8,
+        };
+    };
+};
+
+pub const event = struct {
+    pub const Send = struct {
+        // .detail = propagate (bool)
+        destination: root.Window,
+        event_mask: root.Event.Mask,
+    };
+};
+
 pub const extension = struct {
     pub const query = struct {
         pub const Request = struct {
@@ -316,7 +324,6 @@ pub const extension = struct {
             major_opcode: u8,
             first_event: u8,
             first_error: u8,
-            pad0: [20]u8 = @splat(0),
         };
     };
 };

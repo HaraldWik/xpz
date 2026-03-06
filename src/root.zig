@@ -12,32 +12,6 @@ pub const PixmapFormat = struct {
     pad0: [5]u8 = undefined,
 };
 
-pub const Screen = extern struct {
-    window: Window, // root
-    default_colormap: u32,
-    white_pixel: u32,
-    black_pixel: u32,
-    current_event_mask: Event.Mask,
-    width: u16,
-    height: u16,
-    width_mm: u16,
-    height_mm: u16,
-    min_installed_maps: u16,
-    max_installed_maps: u16,
-    visual_id: Visual.Id,
-    backing_stores: u8,
-    save_unders: u8,
-    root_depth: u8,
-    depths_count: u8,
-
-    pub const Depth = extern struct {
-        depth: u8,
-        pad0: u8 = undefined,
-        visuals_count: u16,
-        pad1: u32 = undefined,
-    };
-};
-
 pub const Drawable = extern union {
     window: Window,
     pixmap: Window,
@@ -59,13 +33,13 @@ pub const Visual = extern struct {
 
     pub fn Class(T: type) type {
         return enum(T) {
-            static_grey = 0,
-            grey_scale = 1,
+            static_gray = 0,
+            gray_scale = 1,
             static_color = 2,
             pseudo_color = 3,
             true_color = 4,
             direct_color = 5,
-            _, // Non standard
+            _,
         };
     }
 
@@ -83,6 +57,32 @@ pub const Visual = extern struct {
         colormap_size: i32,
         bits_per_rgb: i32,
     };
+};
+
+pub const Depth = extern struct {
+    depth: u8,
+    pad0: u8 = 0,
+    visuals_count: u16,
+    pad1: u32 = 0,
+};
+
+pub const Screen = extern struct {
+    window: Window, // root
+    default_colormap: u32,
+    white_pixel: u32,
+    black_pixel: u32,
+    current_event_mask: Event.Mask,
+    width: u16,
+    height: u16,
+    width_mm: u16,
+    height_mm: u16,
+    min_installed_maps: u16,
+    max_installed_maps: u16,
+    visual_id: Visual.Id,
+    backing_stores: u8,
+    save_unders: u8,
+    root_depth: u8,
+    depths_count: u8,
 };
 
 pub const GContext = enum(u32) {
@@ -160,31 +160,19 @@ pub const Extension = enum(u8) {
     @"XC-MISC",
     XCMISC,
     XEVIE,
+    DRI3,
 
-    pub const Info = struct {
-        major_opcode: u8,
-        first_event: u8,
-        first_error: u8,
-    };
+    /// Returns null if extension is not present
+    pub fn query(display: *Display, extension: @This()) !Display.Cookie(protocol.core.extension.query.Reply) {
+        return queryWithSlice(display, @tagName(extension));
+    }
 
-    // /// Returns null if extension is not present
-    // pub fn query(connection: *Connection, extension: @This()) !?Info {
-    //     return queryWithSlice(connection, @tagName(extension));
-    // }
-
-    // /// Returns null if extension is not present
-    // pub fn queryWithSlice(connection: *Connection, extension: []const u8) !?Info {
-    //     const request_value: protocol.core.extension.query.Request = .{
-    //         .name_len = @intCast(extension.len),
-    //         .name = extension,
-    //     };
-    //     var request = try connection.sendRequest(.{ .core = .{ .major = .extension_query } }, request_value);
-    //     const reply = try request.receiveReply(protocol.core.extension.query.Reply);
-
-    //     return if (reply.value.present) .{
-    //         .major_opcode = reply.value.major_opcode,
-    //         .first_event = reply.value.first_event,
-    //         .first_error = reply.value.first_error,
-    //     } else null;
-    // }
+    /// Returns null if extension is not present
+    pub fn queryWithSlice(display: *Display, extension: []const u8) !Display.Cookie(protocol.core.extension.query.Reply) {
+        const request_value: protocol.core.extension.query.Request = .{
+            .name_len = @intCast(extension.len),
+            .name = extension,
+        };
+        return try display.sendRequestWithReply(.{ .major_opcode = .core(.extension_query) }, request_value, protocol.core.extension.query.Reply);
+    }
 };

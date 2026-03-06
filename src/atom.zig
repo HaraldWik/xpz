@@ -153,28 +153,30 @@ pub const Atom = enum(u32) {
     };
 
     pub fn intern(display: *Display, only_if_exists: bool, name: []const u8) !Display.Cookie(@This()) {
-        const request_value = protocol.core.atom.intern.Request{
+        const request = protocol.core.atom.intern.Request{
             .name_len = @intCast(name.len),
             .name = name,
         };
-        const request = try display.sendRequestWithReply(
+        const cookie = try display.sendRequestWithReply(
             .{ .major_opcode = .core(.intern_atom), .minor_opcode = .fromInt(@intFromBool(only_if_exists)) },
-            request_value,
+            request,
             @This(),
         );
-        return request;
+        return cookie;
     }
 
     /// The returned slice points into the reader buffer and is not guaranteed to be valid after more calls,
     /// recommended to use allocator.dupe or store it into a buffer
     pub fn getName(self: @This(), display: *Display) ![]const u8 {
         const request_value = protocol.core.atom.get_name.Request{ .atom = self };
-        const request = try display.sendRequestWithReply(
-            .{ .major_opcode = .core(.intern_atom) },
+        var cookie = try display.sendRequestWithReply(
+            .{ .major_opcode = .core(.get_atom_name) },
             request_value,
             protocol.core.atom.get_name.Reply,
         );
-        request.getReply();
-        return request;
+        const reply = try cookie.getReply();
+        const name = std.mem.trimEnd(u8, cookie.reply_inner.?.payload.buffered()[0..reply.name_len], &.{0});
+        std.debug.print("{t}: name {s}\n", .{ self, name });
+        return name;
     }
 };

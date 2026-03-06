@@ -107,9 +107,9 @@ pub const Setup = struct {
         /// Called once for each screen.
         screen: ?*const fn (user_data: ?*anyopaque, screen: root.Screen) anyerror!void = null,
         /// Called once for each depth of a screen.
-        screenDepth: ?*const fn (user_data: ?*anyopaque, screen: root.Screen, depth: root.Screen.Depth) anyerror!void = null,
+        screenDepth: ?*const fn (user_data: ?*anyopaque, screen: root.Screen, depth: root.Depth) anyerror!void = null,
         /// Called once for each visual in the depth of a screen.
-        screenDepthVisual: ?*const fn (user_data: ?*anyopaque, screen: root.Screen, depth: root.Screen.Depth, visual: root.Visual) anyerror!void = null,
+        screenDepthVisual: ?*const fn (user_data: ?*anyopaque, screen: root.Screen, depth: root.Depth, visual: root.Visual) anyerror!void = null,
     };
 };
 
@@ -193,7 +193,7 @@ pub fn setup(self: *@This(), options: Setup) !void {
         if (options.setup_listener) |setup_listener| if (setup_listener.screen) |f| try f(setup_listener.user_data, screen);
 
         for (0..screen.depths_count) |_| {
-            const depth = try unmarshal(reader, root.Screen.Depth, self.endian);
+            const depth = try unmarshal(reader, root.Depth, self.endian);
 
             if (options.setup_listener) |setup_listener| if (setup_listener.screenDepth) |f| try f(setup_listener.user_data, screen, depth);
 

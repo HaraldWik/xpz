@@ -10,11 +10,30 @@ pub fn main(init: std.process.Init) !void {
 
     var utf8_string_cookie = try xpz.Atom.intern(&display, false, xpz.Atom.utf8_string);
     var net_wm_name_cookie = try xpz.Atom.intern(&display, false, xpz.Atom.net_wm.name);
+
+    var glx_cookie = try xpz.Extension.query(&display, .GLX);
+    var dri3_cookie = try xpz.Extension.query(&display, .DRI3);
+    var randr_cookie = try xpz.Extension.query(&display, .RANDR);
+    var xfixes_cookie = try xpz.Extension.query(&display, .XFIXES);
+    var composite_cookie = try xpz.Extension.query(&display, .Composite);
+
     const utf8_string = try utf8_string_cookie.getReply();
     const net_wm_name = try net_wm_name_cookie.getReply();
 
+    const glx = try glx_cookie.getReply();
+    const dri3 = try dri3_cookie.getReply();
+    const randr = try randr_cookie.getReply();
+    const xfixes = try xfixes_cookie.getReply();
+    const composite = try composite_cookie.getReply();
+
     std.log.info("{s} = {d}", .{ xpz.Atom.utf8_string, @intFromEnum(utf8_string) });
     std.log.info("{s} = {d}", .{ xpz.Atom.net_wm.name, @intFromEnum(net_wm_name) });
+
+    std.log.info("GLX = {any}", .{glx});
+    std.log.info("DRI3 = {any}", .{dri3});
+    std.log.info("RANDR = {any}", .{randr});
+    std.log.info("XFIXES = {any}", .{xfixes});
+    std.log.info("Composite = {any}", .{composite});
 }
 
 // const std = @import("std");
