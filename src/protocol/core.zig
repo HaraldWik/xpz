@@ -125,6 +125,17 @@ pub const Opcode = enum(u8) {
     _,
 };
 
+pub const Point = struct {
+    x: i16 = 0,
+    y: i16 = 0,
+};
+pub const Rectangle = struct {
+    x: i16 = 0,
+    y: i16 = 0,
+    width: u16 = 0,
+    height: u16 = 0,
+};
+
 pub const setup = struct {
     pub const Request = struct {
         byte_order: u8, // 'l' or 'B' for little and big endian

@@ -126,6 +126,10 @@ pub const Colormap = enum(u32) {
     // }
 };
 
+pub const Pixmap = enum(u32) {
+    _,
+};
+
 pub const Cursor = enum(u32) {
     _,
 };
