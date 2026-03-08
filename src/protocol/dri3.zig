@@ -1,7 +1,5 @@
 const std = @import("std");
-const Window = @import("../window.zig").Window;
-const Drawable = @import("../root.zig").Drawable;
-const Pixmap = @import("../root.zig").Pixmap;
+const core = @import("../client/core.zig");
 
 pub const Opcode = enum(u8) {
     query_version = 0,
@@ -34,7 +32,7 @@ pub const query_version = struct {
 };
 pub const open = struct {
     pub const Request = struct {
-        drawable: Drawable,
+        drawable: core.Drawable,
         provider: u32,
     };
     pub const Reply = struct {
@@ -44,8 +42,8 @@ pub const open = struct {
 };
 pub const pixmap_from_buffer = struct {
     pub const Request = struct {
-        pixmap: Pixmap,
-        drawable: Drawable,
+        pixmap: core.Pixmap,
+        drawable: core.Drawable,
         size: u32,
         width: u16,
         height: u16,
@@ -57,7 +55,7 @@ pub const pixmap_from_buffer = struct {
 };
 pub const buffer_from_pixmap = struct {
     pub const Request = struct {
-        pixmap: Pixmap,
+        pixmap: core.Pixmap,
     };
     pub const Reply = struct {
         nfd: u8,
@@ -72,7 +70,7 @@ pub const buffer_from_pixmap = struct {
 };
 pub const fence_from_fd = struct {
     pub const Request = struct {
-        drawable: Drawable,
+        drawable: core.Drawable,
         fence: u32,
         initially_triggered: bool,
         fd: std.posix.fd_t,
@@ -80,7 +78,7 @@ pub const fence_from_fd = struct {
 };
 pub const fd_from_fence = struct {
     pub const Request = struct {
-        drawable: Drawable,
+        drawable: core.Drawable,
         fence: u32,
     };
     pub const Reply = struct {
@@ -107,8 +105,8 @@ pub const pixmap_from_buffers = struct {
     pub const Request = struct {
         // unknown start required_start_align
         // unknown end required_start_align
-        pixmap: Pixmap,
-        window: Window,
+        pixmap: core.Pixmap,
+        window: core.Window,
         num_buffers: u8,
         width: u16,
         height: u16,
@@ -128,7 +126,7 @@ pub const pixmap_from_buffers = struct {
 };
 pub const buffers_from_pixmap = struct {
     pub const Request = struct {
-        pixmap: Pixmap,
+        pixmap: core.Pixmap,
     };
     pub const Reply = struct {
         // unknown start required_start_align
@@ -146,7 +144,7 @@ pub const buffers_from_pixmap = struct {
 };
 pub const set_drm_device_in_use = struct {
     pub const Request = struct {
-        window: Window,
+        window: core.Window,
         drmMajor: u32,
         drmMinor: u32,
     };
@@ -154,7 +152,7 @@ pub const set_drm_device_in_use = struct {
 pub const import_syncobj = struct {
     pub const Request = struct {
         syncobj: SyncObject,
-        drawable: Drawable,
+        drawable: core.Drawable,
         fd: std.posix.fd_t,
     };
 };

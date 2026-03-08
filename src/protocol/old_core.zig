@@ -1,0 +1,340 @@
+const Auth = @import("../client/Display/Auth.zig");
+const ResponseType = @import("../client/Display/Connection.zig").Reply.Header.ResponseType;
+const core = @import("../client/core.zig");
+
+pub const Opcode = enum(u8) {
+    create_window = 1,
+    change_window_attributes = 2,
+    get_window_attributes = 3,
+    destroy_window = 4,
+    destroy_subwindows = 5,
+    change_save_set = 6,
+    reparent_window = 7,
+    map_window = 8,
+    map_subwindows = 9,
+    unmap_window = 10,
+    unmap_subwindows = 11,
+    configure_window = 12,
+    circulate_window = 13,
+    get_geometry = 14,
+    query_tree = 15,
+    intern_atom = 16,
+    get_atom_name = 17,
+    change_property = 18,
+    delete_property = 19,
+    get_property = 20,
+    list_properties = 21,
+    set_selection_owner = 22,
+    get_selection_owner = 23,
+    convert_selection = 24,
+    send_event = 25,
+    grab_pointer = 26,
+    ungrab_pointer = 27,
+    grab_button = 28,
+    ungrab_button = 29,
+    change_active_pointer_grab = 30,
+    grab_keyboard = 31,
+    ungrab_keyboard = 32,
+    grab_key = 33,
+    ungrab_key = 34,
+    allow_events = 35,
+    grab_server = 36,
+    ungrab_server = 37,
+    query_pointer = 38,
+    get_motion_events = 39,
+    translate_coords = 40,
+    warp_pointer = 41,
+    set_input_focus = 42,
+    get_input_focus = 43,
+    query_keymap = 44,
+    font_open = 45,
+    font_close = 46,
+    font_query = 47,
+    query_text_extents = 48,
+    fonts_list = 49,
+    fonts_list_with_info = 50,
+    font_set_path = 51,
+    font_get_path = 52,
+    pixmap_create = 53,
+    pixmap_free = 54,
+    gc_create = 55,
+    gc_change = 56,
+    gc_copy = 57,
+    set_dashes = 58,
+    set_clip_rectangles = 59,
+    gc_free = 60,
+    clear_area = 61,
+    copy_area = 62,
+    copy_plane = 63,
+    poly_point = 64,
+    poly_line = 65,
+    poly_segment = 66,
+    poly_rectangle = 67,
+    poly_arc = 68,
+    fill_poly = 69,
+    poly_fill_rectangle = 70,
+    poly_fill_arc = 71,
+    put_image = 72,
+    get_image = 73,
+    poly_text8 = 74,
+    poly_text16 = 75,
+    image_text8 = 76,
+    image_text16 = 77,
+    colormap_create = 78,
+    colormap_free = 79,
+    colormap_copy_and_free = 80,
+    colormap_install = 81,
+    colormap_uninstall = 82,
+    colormaps_list_installed = 83,
+    alloc_color = 84,
+    alloc_named_color = 85,
+    alloc_color_cells = 86,
+    alloc_color_planes = 87,
+    free_colors = 88,
+    store_colors = 89,
+    store_named_color = 90,
+    query_colors = 91,
+    lookup_color = 92,
+    create_cursor = 93,
+    create_glyph_cursor = 94,
+    free_cursor = 95,
+    recolor_cursor = 96,
+    query_best_size = 97,
+    extension_query = 98,
+    extensions_list = 99,
+    change_keyboard_mapping = 100,
+    get_keyboard_mapping = 101,
+    change_keyboard_control = 102,
+    get_keyboard_control = 103,
+    bell = 104,
+    change_pointer_control = 105,
+    get_pointer_control = 106,
+    set_screen_saver = 107,
+    get_screen_saver = 108,
+    hosts_change = 109,
+    hosts_list = 110,
+    set_access_control = 111,
+    set_close_down_mode = 112,
+    kill_client = 113,
+    rotate_properties = 114,
+    force_screen_saver = 115,
+    set_pointer_mapping = 116,
+    get_pointer_mapping = 117,
+    set_modifier_mapping = 118,
+    get_modifier_mapping = 119,
+    _,
+};
+
+pub const Point = struct {
+    x: i16 = 0,
+    y: i16 = 0,
+};
+pub const Rectangle = struct {
+    x: i16 = 0,
+    y: i16 = 0,
+    width: u16 = 0,
+    height: u16 = 0,
+};
+
+pub const setup = struct {
+    pub const Request = struct {
+        byte_order: u8, // 'l' or 'B' for little and big endian
+        pad0: u8 = undefined,
+        protocol_version_major: u16,
+        protocol_version_minor: u16,
+        auth_name_len: u16,
+        auth_data_len: u16,
+        pad1: u16 = undefined,
+        auth: Auth,
+    };
+
+    pub const Reply = extern struct {
+        status: ResponseType,
+        pad0: u8,
+        protocol_version_major: u16,
+        protocol_version_minor: u16,
+        length: u16,
+        release_number: u32,
+        resource_id_base: u32,
+        resource_id_mask: u32,
+        motion_buffer_size: u32,
+        vendor_len: u16,
+        maximum_request_length: u16,
+        screen_count: u8, // aka 'root_len'
+        pixmap_format_count: u8,
+        image_byte_order: u8, // endian aka 'l' or 'B'
+        bitmap_format_bit_order: u8,
+        bitmap_format_scanline_unit: u8,
+        bitmap_format_scanline_pad: u8,
+        min_keycode: u8,
+        max_keycode: u8,
+        pad1: u32,
+    };
+
+    pub const PixmapFormat = struct {
+        depth: u8,
+        bits_per_pixel: u8,
+        scanline_pad: u8,
+        pad: [5]u8,
+    };
+};
+
+pub const window = struct {
+    pub const Create = struct {
+        // .detail = depth
+        window: core.Window,
+        parent: core.Window, // screen root or parent
+        x: i16,
+        y: i16,
+        width: u16,
+        height: u16,
+        border_width: u16,
+        class: Class = .input_output,
+        visual_id: core.Visual.Id, // usually copied from parent
+        value_mask: core.Window.Attributes.Mask,
+
+        pub const Class = enum(u16) {
+            copy_from_parent = 0,
+            input_output = 1,
+            input_only = 2,
+        };
+    };
+
+    pub const Destroy = struct {
+        window: core.Window,
+    };
+
+    pub const Map = struct {
+        window: core.Window,
+    };
+
+    pub const CreateGC = struct {
+        cid: core.GContext,
+        drawable: core.Drawable,
+        mask: u32,
+    };
+
+    pub const ChangeAttributes = struct {
+        window: core.Window,
+        value_mask: core.Window.Attributes.Mask,
+    };
+
+    pub const ChangeProperty = struct {
+        // .detail = ChangeMode,
+        window: core.Window,
+        property: core.Atom,
+        type: core.Atom,
+        format: core.Format,
+        pad0: [3]u8 = @splat(0),
+        element_count: u32,
+        data: []const u8,
+
+        pub const ChangeMode = enum(u8) {
+            replace = 0,
+            prepend = 1,
+            append = 2,
+        };
+    };
+
+    pub const ClearArea = struct {
+        window: core.Window,
+        exposures: bool,
+        x: i16,
+        y: i16,
+        width: u16,
+        height: u16,
+    };
+};
+
+pub const pixmap = struct {};
+
+pub const cursor = struct {};
+
+pub const font = struct {};
+
+pub const gcontext = struct {};
+
+pub const colormap = struct {
+    pub const Create = struct {
+        /// .detail =  AllocNone = 0, AllocAll = 1
+        colormap: core.Colormap,
+        window: core.Window,
+        visual_id: core.Visual.Id,
+    };
+    pub const Free = struct {
+        colormap: core.Colormap,
+    };
+
+    pub const CopyAndFree = struct {
+        dest: core.Colormap,
+        src: core.Colormap,
+    };
+
+    pub const Install = struct {
+        colormap: core.Colormap,
+    };
+
+    pub const Uninstall = struct {
+        colormap: core.Colormap,
+    };
+
+    pub const list_installed = struct {
+        pub const Request = struct {
+            window: core.Window,
+        };
+
+        pub const Reply = struct {
+            colormap_count: u16,
+            pad0: [22]u8,
+        };
+    };
+};
+
+pub const atom = struct {
+    pub const intern = struct {
+        pub const Request = struct {
+            /// len in bytes
+            name_len: u16,
+            pad0: u16 = 0,
+            name: []const u8,
+        };
+
+        pub const Reply = core.Atom;
+    };
+
+    pub const get_name = struct {
+        pub const Request = struct {
+            atom: core.Atom,
+        };
+
+        pub const Reply = struct {
+            name_len: u32,
+            pad0: [24]u8,
+        };
+    };
+};
+
+pub const event = struct {
+    pub const Send = struct {
+        // .detail = propagate (bool)
+        destination: core.Window,
+        event_mask: core.Event.Mask,
+    };
+};
+
+pub const extension = struct {
+    pub const query = struct {
+        pub const Request = struct {
+            name_len: u16,
+            pad0: u16 = 0,
+            name: []const u8,
+        };
+
+        pub const Reply = struct {
+            present: bool,
+            major_opcode: u8,
+            first_event: u8,
+            first_error: u8,
+        };
+    };
+};

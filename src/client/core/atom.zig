@@ -1,6 +1,6 @@
 const std = @import("std");
-const protocol = @import("protocol.zig");
-const Display = @import("Display.zig");
+const protocol = @import("../../protocol.zig");
+const Display = @import("../Display.zig");
 
 pub const Atom = enum(u32) {
     none = 0,
@@ -153,7 +153,7 @@ pub const Atom = enum(u32) {
     };
 
     pub fn intern(display: *Display, only_if_exists: bool, name: []const u8) !Display.Cookie(@This()) {
-        const request = protocol.core.atom.intern.Request{
+        const request = protocol.core.intern_atom.Request{
             .name_len = @intCast(name.len),
             .name = name,
         };

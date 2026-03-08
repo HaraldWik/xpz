@@ -1,5 +1,4 @@
-const Window = @import("../window.zig").Window;
-const Pixmap = @import("../root.zig").Pixmap;
+const core = @import("../client/core.zig");
 
 pub const composite = struct {
     pub const Opcode = enum(u8) {
@@ -35,13 +34,13 @@ pub const composite = struct {
     pub const redirect = struct {
         pub const window = struct {
             pub const Request = struct {
-                window: Window,
+                window: core.Window,
                 update: u8,
             };
         };
         pub const subwindows = struct {
             pub const Request = struct {
-                window: Window,
+                window: core.Window,
                 update: u8,
             };
         };
@@ -49,13 +48,13 @@ pub const composite = struct {
     pub const unredirect = struct {
         pub const window = struct {
             pub const Request = struct {
-                window: Window,
+                window: core.Window,
                 update: u8,
             };
         };
         pub const subwindows = struct {
             pub const Request = struct {
-                window: Window,
+                window: core.Window,
                 update: u8,
             };
         };
@@ -63,26 +62,26 @@ pub const composite = struct {
     pub const create_region_from_border_clip = struct {
         pub const Request = struct {
             region: Region,
-            window: Window,
+            window: core.Window,
         };
     };
     pub const name_window_pixmap = struct {
         pub const Request = struct {
-            window: Window,
-            pixmap: Pixmap,
+            window: core.Window,
+            pixmap: core.Pixmap,
         };
     };
     pub const get_overlay_window = struct {
         pub const Request = struct {
-            window: Window,
+            window: core.Window,
         };
         pub const Reply = struct {
-            overlay_win: Window,
+            overlay_win: core.Window,
         };
     };
     pub const release_overlay_window = struct {
         pub const Request = struct {
-            window: Window,
+            window: core.Window,
         };
     };
 };

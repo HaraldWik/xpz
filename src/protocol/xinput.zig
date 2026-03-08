@@ -1,3 +1,7 @@
+const core = @import("../client/core.zig");
+
+pub const DeviceId = u32;
+
 pub const FP3232 = struct {
     integral: i32,
     frac: u32,
@@ -33,7 +37,7 @@ pub const ValuatorMode = enum(u32) {
     absolute = 1,
 };
 pub const DeviceInfo = struct {
-    device_type: Atom,
+    device_type: core.Atom,
     device_id: u8,
     num_class_info: u8,
     device_use: u8,
@@ -41,8 +45,8 @@ pub const DeviceInfo = struct {
 pub const KeyInfo = struct {
     class_id: u8,
     len: u8,
-    min_keycode: KeyCode,
-    max_keycode: KeyCode,
+    min_keycode: core.key.Code,
+    max_keycode: core.key.Code,
     num_keys: u16,
 };
 pub const ButtonInfo = struct {
@@ -118,12 +122,12 @@ pub const SetDeviceMode = struct { // opcode 5
     };
 };
 pub const SelectExtensionEvent = struct { // opcode 6
-    window: Window,
+    window: core.Window,
     num_classes: u16,
     classes: []const EventClass,
 };
 pub const GetSelectedExtensionEvents = struct { // opcode 7
-    window: Window,
+    window: core.Window,
     pub const Reply = struct {
         xi_reply_type: u8,
         num_this_classes: u16,
@@ -137,13 +141,13 @@ pub const PropagateMode = enum(u32) {
     delete_from_list = 1,
 };
 pub const ChangeDeviceDontPropagateList = struct { // opcode 8
-    window: Window,
+    window: core.Window,
     num_classes: u16,
     mode: u8,
     classes: []const EventClass,
 };
 pub const GetDeviceDontPropagateList = struct { // opcode 9
-    window: Window,
+    window: core.Window,
     pub const Reply = struct {
         xi_reply_type: u8,
         num_classes: u16,
@@ -185,7 +189,7 @@ pub const ChangePointerDevice = struct { // opcode 12
     };
 };
 pub const GrabDevice = struct { // opcode 13
-    grab_window: Window,
+    grab_window: core.Window,
     time: u32,
     num_classes: u16,
     this_device_mode: u8,
@@ -206,7 +210,7 @@ pub const ModifierDevice = enum(u32) {
     use_x_keyboard = 255,
 };
 pub const GrabDeviceKey = struct { // opcode 15
-    grab_window: Window,
+    grab_window: core.Window,
     num_classes: u16,
     modifiers: u16,
     modifier_device: u8,
@@ -218,14 +222,14 @@ pub const GrabDeviceKey = struct { // opcode 15
     classes: []const EventClass,
 };
 pub const UngrabDeviceKey = struct { // opcode 16
-    grabWindow: Window,
+    grabWindow: core.Window,
     modifiers: u16,
     modifier_device: u8,
     key: u8,
     grabbed_device: u8,
 };
 pub const GrabDeviceButton = struct { // opcode 17
-    grab_window: Window,
+    grab_window: core.Window,
     grabbed_device: u8,
     modifier_device: u8,
     num_classes: u16,
@@ -237,7 +241,7 @@ pub const GrabDeviceButton = struct { // opcode 17
     classes: []const EventClass,
 };
 pub const UngrabDeviceButton = struct { // opcode 18
-    grab_window: Window,
+    grab_window: core.Window,
     modifiers: u16,
     modifier_device: u8,
     button: u8,
@@ -260,13 +264,13 @@ pub const GetDeviceFocus = struct { // opcode 20
     device_id: u8,
     pub const Reply = struct {
         xi_reply_type: u8,
-        focus: Window,
+        focus: core.Window,
         time: u32,
         revert_to: u8,
     };
 };
 pub const SetDeviceFocus = struct { // opcode 21
-    focus: Window,
+    focus: core.Window,
     time: u32,
     revert_to: u8,
     device_id: u8,
@@ -930,11 +934,11 @@ pub const ModifierInfo = struct {
     effective: u32,
 };
 pub const XIQueryPointer = struct { // opcode 40
-    window: Window,
+    window: core.Window,
     deviceid: DeviceId,
     pub const Reply = struct {
-        root: Window,
-        child: Window,
+        root: core.Window,
+        child: core.Window,
         root_x: FP1616,
         root_y: FP1616,
         win_x: FP1616,
@@ -947,8 +951,8 @@ pub const XIQueryPointer = struct { // opcode 40
     };
 };
 pub const XIWarpPointer = struct { // opcode 41
-    src_win: Window,
-    dst_win: Window,
+    src_win: core.Window,
+    dst_win: core.Window,
     src_x: FP1616,
     src_y: FP1616,
     src_width: u16,
@@ -958,7 +962,7 @@ pub const XIWarpPointer = struct { // opcode 41
     deviceid: DeviceId,
 };
 pub const XIChangeCursor = struct { // opcode 42
-    window: Window,
+    window: core.Window,
     cursor: Cursor,
     deviceid: DeviceId,
 };
@@ -1037,11 +1041,11 @@ pub const XIChangeHierarchy = struct { // opcode 43
     changes: []const HierarchyChange,
 };
 pub const XISetClientPointer = struct { // opcode 44
-    window: Window,
+    window: core.Window,
     deviceid: DeviceId,
 };
 pub const XIGetClientPointer = struct { // opcode 45
-    window: Window,
+    window: core.Window,
     pub const Reply = struct {
         set: bool,
         deviceid: DeviceId,
@@ -1081,7 +1085,7 @@ pub const EventMask = struct {
     mask: []const u32,
 };
 pub const XISelectEvents = struct { // opcode 46
-    window: Window,
+    window: core.Window,
     num_mask: u16,
     masks: []const EventMask,
 };
@@ -1249,14 +1253,14 @@ pub const XIQueryDevice = struct { // opcode 48
     };
 };
 pub const XISetFocus = struct { // opcode 49
-    window: Window,
+    window: core.Window,
     time: u32,
     deviceid: DeviceId,
 };
 pub const XIGetFocus = struct { // opcode 50
     deviceid: DeviceId,
     pub const Reply = struct {
-        focus: Window,
+        focus: core.Window,
     };
 };
 pub const GrabOwner = enum(u32) {
@@ -1264,7 +1268,7 @@ pub const GrabOwner = enum(u32) {
     owner = 1,
 };
 pub const XIGrabDevice = struct { // opcode 51
-    window: Window,
+    window: core.Window,
     time: u32,
     cursor: Cursor,
     deviceid: DeviceId,
@@ -1296,7 +1300,7 @@ pub const XIAllowEvents = struct { // opcode 53
     deviceid: DeviceId,
     event_mode: u8,
     touchid: u32,
-    grab_window: Window,
+    grab_window: core.Window,
 };
 pub const GrabMode22 = enum(u32) {
     sync = 0,
@@ -1321,8 +1325,8 @@ pub const GrabModifierInfo = struct {
 };
 pub const XIPassiveGrabDevice = struct { // opcode 54
     time: u32,
-    grab_window: Window,
-    cursor: Cursor,
+    grab_window: core.Window,
+    cursor: core.Cursor,
     detail: u32,
     deviceid: DeviceId,
     num_modifiers: u16,
@@ -1339,7 +1343,7 @@ pub const XIPassiveGrabDevice = struct { // opcode 54
     };
 };
 pub const XIPassiveUngrabDevice = struct { // opcode 55
-    grab_window: Window,
+    grab_window: core.Window,
     detail: u32,
     deviceid: DeviceId,
     num_modifiers: u16,
@@ -1414,7 +1418,7 @@ pub const XIGetProperty = struct { // opcode 59
     };
 };
 pub const XIGetSelectedEvents = struct { // opcode 60
-    window: Window,
+    window: core.Window,
     pub const Reply = struct {
         num_masks: u16,
         masks: []const EventMask,
@@ -1442,9 +1446,9 @@ pub const MoreEventsMask = packed struct(u32) {
 pub const DeviceKeyPress = struct {
     detail: u8,
     time: u32,
-    root: Window,
-    event: Window,
-    child: Window,
+    root: core.Window,
+    event: core.Window,
+    child: core.Window,
     root_x: i16,
     root_y: i16,
     event_x: i16,
@@ -1464,7 +1468,7 @@ pub const DeviceKeyPress = struct {
 pub const DeviceFocusIn = struct {
     detail: u8,
     time: u32,
-    window: Window,
+    window: core.Window,
     mode: u8,
     device_id: u8,
 };
@@ -1555,9 +1559,9 @@ pub const KeyPress = struct {
     deviceid: DeviceId,
     time: u32,
     detail: u32,
-    root: Window,
-    event: Window,
-    child: Window,
+    root: core.Window,
+    event: core.Window,
+    child: core.Window,
     root_x: FP1616,
     root_y: FP1616,
     event_x: FP1616,
@@ -1587,9 +1591,9 @@ pub const ButtonPress = struct {
     deviceid: DeviceId,
     time: u32,
     detail: u32,
-    root: Window,
-    event: Window,
-    child: Window,
+    root: core.Window,
+    event: core.Window,
+    child: core.Window,
     root_x: FP1616,
     root_y: FP1616,
     event_x: FP1616,
@@ -1638,9 +1642,9 @@ pub const Enter = struct {
     sourceid: DeviceId,
     mode: u8,
     detail: u8,
-    root: Window,
-    event: Window,
-    child: Window,
+    root: core.Window,
+    event: core.Window,
+    child: core.Window,
     root_x: FP1616,
     root_y: FP1616,
     event_x: FP1616,
@@ -1753,9 +1757,9 @@ pub const TouchBegin = struct {
     deviceid: DeviceId,
     time: u32,
     detail: u32,
-    root: Window,
-    event: Window,
-    child: Window,
+    root: core.Window,
+    event: core.Window,
+    child: core.Window,
     root_x: FP1616,
     root_y: FP1616,
     event_x: FP1616,
@@ -1787,9 +1791,9 @@ pub const TouchOwnership = struct {
     deviceid: DeviceId,
     time: u32,
     touchid: u32,
-    root: Window,
-    event: Window,
-    child: Window,
+    root: core.Window,
+    event: core.Window,
+    child: core.Window,
     sourceid: DeviceId,
     flags: u32,
 };
@@ -1828,8 +1832,8 @@ pub const BarrierHit = struct {
     deviceid: DeviceId,
     time: u32,
     eventid: u32,
-    root: Window,
-    event: Window,
+    root: core.Window,
+    event: core.Window,
     barrier: Barrier,
     dtime: u32,
     flags: u32,
@@ -1848,9 +1852,9 @@ pub const GesturePinchBegin = struct {
     deviceid: DeviceId,
     time: u32,
     detail: u32,
-    root: Window,
-    event: Window,
-    child: Window,
+    root: core.Window,
+    event: core.Window,
+    child: core.Window,
     root_x: FP1616,
     root_y: FP1616,
     event_x: FP1616,
@@ -1877,9 +1881,9 @@ pub const GestureSwipeBegin = struct {
     deviceid: DeviceId,
     time: u32,
     detail: u32,
-    root: Window,
-    event: Window,
-    child: Window,
+    root: core.Window,
+    event: core.Window,
+    child: core.Window,
     root_x: FP1616,
     root_y: FP1616,
     event_x: FP1616,
@@ -1902,7 +1906,7 @@ pub const GestureSwipeBegin = struct {
 // unknown end allowed
 // unknown end eventstruct
 pub const SendExtensionEvent = struct { // opcode 31
-    destination: Window,
+    destination: core.Window,
     device_id: u8,
     propagate: bool,
     num_classes: u16,
@@ -1915,7 +1919,7 @@ pub const Event = struct {};
 pub const Mode = struct {};
 pub const DeviceBusy = struct {};
 pub const Class = struct {};
-// unknown end xcb
+
 pub const Opcode = enum(u8) {
     get_extension_version = 1,
     list_input_devices = 2,
@@ -1955,27 +1959,27 @@ pub const Opcode = enum(u8) {
     change_device_property = 37,
     delete_device_property = 38,
     get_device_property = 39,
-    x_i_query_pointer = 40,
-    x_i_warp_pointer = 41,
-    x_i_change_cursor = 42,
-    x_i_change_hierarchy = 43,
-    x_i_set_client_pointer = 44,
-    x_i_get_client_pointer = 45,
-    x_i_select_events = 46,
-    x_i_query_version = 47,
-    x_i_query_device = 48,
-    x_i_set_focus = 49,
-    x_i_get_focus = 50,
-    x_i_grab_device = 51,
-    x_i_ungrab_device = 52,
-    x_i_allow_events = 53,
-    x_i_passive_grab_device = 54,
-    x_i_passive_ungrab_device = 55,
-    x_i_list_properties = 56,
-    x_i_change_property = 57,
-    x_i_delete_property = 58,
-    x_i_get_property = 59,
-    x_i_get_selected_events = 60,
-    x_i_barrier_release_pointer = 61,
+    xi_query_pointer = 40,
+    xi_warp_pointer = 41,
+    xi_change_cursor = 42,
+    xi_change_hierarchy = 43,
+    xi_set_client_pointer = 44,
+    xi_get_client_pointer = 45,
+    xi_select_events = 46,
+    xi_query_version = 47,
+    xi_query_device = 48,
+    xi_set_focus = 49,
+    xi_get_focus = 50,
+    xi_grab_device = 51,
+    xi_ungrab_device = 52,
+    xi_allow_events = 53,
+    xi_passive_grab_device = 54,
+    xi_passive_ungrab_device = 55,
+    xi_list_properties = 56,
+    xi_change_property = 57,
+    xi_delete_property = 58,
+    xi_get_property = 59,
+    xi_get_selected_events = 60,
+    xi_barrier_release_pointer = 61,
     send_extension_event = 31,
 };

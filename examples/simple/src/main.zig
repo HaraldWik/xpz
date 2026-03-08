@@ -1,5 +1,5 @@
 const std = @import("std");
-const xpz = @import("xpz");
+const xpz = @import("xpz").client.core;
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
@@ -7,7 +7,14 @@ pub fn main(init: std.process.Init) !void {
 
     var display: xpz.Display = try .connect(allocator, io, null, .{ .detect = init.minimal });
     defer display.disconnect();
+    std.log.info("vendor: {s}", .{display.connection.setup_reply.vendor});
 
+    for (display.connection.setup_reply.pixmap_formats) |pixmap_format| {
+        std.log.info("pixmap_format: {any}", .{pixmap_format});
+    }
+    for (display.connection.setup_reply.roots) |root| {
+        std.log.info("screen: size = {d}x{d}", .{ root.width_in_pixels, root.height_in_pixels });
+    }
     var utf8_string_cookie = try xpz.Atom.intern(&display, false, xpz.Atom.utf8_string);
     var net_wm_name_cookie = try xpz.Atom.intern(&display, false, xpz.Atom.net_wm.name);
 

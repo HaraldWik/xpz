@@ -8,6 +8,7 @@ connection: Connection,
 mutux: std.Io.Mutex = .init,
 
 replies: std.Deque(Connection.Reply) = .empty,
+reply_arena: std.heap.ArenaAllocator,
 
 pub const default_address: std.Io.net.UnixAddress = .{ .path = "/tmp/.X11-unix/X0" };
 
@@ -30,7 +31,7 @@ pub fn Cookie(Reply: type) type {
                     var reply_copy = reply;
                     if (reply_copy.sequence != self.sequence) continue;
 
-                    const value = try Connection.unmarshal(&reply_copy.payload, Reply, self.display.connection.endian);
+                    const value = try Connection.deserialize(self.display.reply_arena.allocator(), &reply_copy.payload, Reply, self.display.connection.endian);
                     self.reply = value;
                     self.reply_inner = reply_copy;
                     return value;
@@ -50,17 +51,19 @@ pub fn connect(allocator: std.mem.Allocator, io: std.Io, address: ?std.Io.net.Un
     };
 
     var connection: Connection = try .open(io, allocator, address orelse default_address, .{});
-    try connection.setup(.{ .auth = auth });
+    try connection.setup(allocator, .{ .auth = auth });
 
     return .{
         .allocator = allocator,
         .io = io,
         .connection = connection,
+        .reply_arena = .init(allocator),
     };
 }
 
 pub fn disconnect(self: *@This()) void {
     self.replies.deinit(self.allocator);
+    self.reply_arena.deinit();
     self.connection.close(self.allocator);
     self.* = undefined;
 }
