@@ -1,5 +1,6 @@
 const std = @import("std");
 const xpz = @import("xpz").client.core;
+const xproto = @import("xpz").protocol;
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
@@ -9,11 +10,19 @@ pub fn main(init: std.process.Init) !void {
     defer display.disconnect();
     std.log.info("vendor: {s}", .{display.connection.setup_reply.vendor});
 
+    std.log.info("pixmap format size = {d} vs {d}", .{ @sizeOf(xpz.Pixmap.Format), xpz.Display.Connection.getDeserializeSize(xpz.Pixmap.Format) });
+
     for (display.connection.setup_reply.pixmap_formats) |pixmap_format| {
         std.log.info("pixmap_format: {any}", .{pixmap_format});
     }
     for (display.connection.setup_reply.roots) |root| {
-        std.log.info("screen: size = {d}x{d}", .{ root.width_in_pixels, root.height_in_pixels });
+        std.log.info("screen: {any}", .{root});
+        for (root.allowed_depths) |allowed_depth| {
+            std.log.info("\tallowed depth: {d}", .{allowed_depth.depth});
+            for (allowed_depth.visuals) |visual| {
+                std.log.info("\t\tvisual id {d}, class: {t}, bits_per_rgb_value: {d}", .{ visual.visual_id, visual.class, visual.bits_per_rgb_value });
+            }
+        }
     }
     var utf8_string_cookie = try xpz.Atom.intern(&display, false, xpz.Atom.utf8_string);
     var net_wm_name_cookie = try xpz.Atom.intern(&display, false, xpz.Atom.net_wm.name);

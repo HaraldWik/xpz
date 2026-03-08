@@ -1,7 +1,7 @@
 const std = @import("std");
 const protocol = @import("../../protocol.zig");
 const Auth = @import("Auth.zig");
-const root = @import("../core.zig");
+const core = @import("../core.zig");
 
 endian: std.builtin.Endian,
 reader: std.Io.net.Stream.Reader,
@@ -9,7 +9,7 @@ writer: std.Io.net.Stream.Writer,
 sequence: u16 = 0,
 resource_id: ResourceId = .{},
 setup_reply: protocol.core.setup.Reply = undefined,
-root_screen: root.Screen = undefined,
+root_screen: core.Screen = undefined,
 
 pub const ResourceId = struct {
     base: u32 = 0,
@@ -145,7 +145,7 @@ pub fn setup(self: *@This(), allocator: std.mem.Allocator, options: Setup) !void
         .authorization_protocol_data = options.auth.data,
     };
 
-    try marshal(writer, request, self.endian);
+    try serialize(writer, request, self.endian);
     try self.flush();
 
     try reader.fillMore();
@@ -156,41 +156,51 @@ pub fn setup(self: *@This(), allocator: std.mem.Allocator, options: Setup) !void
         return error.SetupReply;
     }
 
-    // const reply = try unmarshalValue(reader, protocol.core.setup.Reply, self.endian);
-    // std.debug.assert(options.protocol_version_major <= reply.protocol_version_major);
-    // std.debug.assert(options.protocol_version_minor <= reply.protocol_version_minor);
+    var reply: protocol.core.setup.Reply = try deserialize(allocator, reader, protocol.core.setup.Reply, self.endian, true);
+    std.debug.assert(options.protocol_major_version <= reply.protocol_major_version);
+    std.debug.assert(options.protocol_minor_version <= reply.protocol_minor_version);
 
-    // const vendor = std.mem.trimEnd(u8, try reader.take(reply.vendor_len), &.{0});
-    // if (options.setup_listener) |setup_listener| if (setup_listener.vendor) |f| try f(setup_listener.user_data, vendor);
+    // const vendor = try allocator.alloc(u8, reply.vendor_len);
+    // @memcpy(vendor, std.mem.trimEnd(u8, try reader.take(reply.vendor_len), &.{0}));
+    // reply.vendor = vendor;
 
-    // for (0..reply.pixmap_format_count) |_| {
-    //     const pixmap_format = try unmarshalValue(reader, root.PixmapFormat, self.endian);
-    //     if (options.setup_listener) |setup_listener| if (setup_listener.pixmapFormat) |f| try f(setup_listener.user_data, pixmap_format);
+    // const pixmap_formats = try allocator.alloc(core.Pixmap.Format, reply.pixmap_formats_len);
+    // for (pixmap_formats) |*pixmap_format| pixmap_format.* = try deserialize(null, reader, core.Pixmap.Format, self.endian, false);
+    // reply.pixmap_formats = pixmap_formats;
+
+    // const roots = try allocator.alloc(core.Screen, reply.roots_len);
+    // for (roots) |*root| {
+    //     root.* = try deserialize(null, reader, core.Screen, self.endian, false);
+
+    //     const allowed_depths = try allocator.alloc(core.Depth, root.allowed_depths_len);
+    //     for (allowed_depths) |*allowed_depth| {
+    //         allowed_depth.* = try deserialize(null, reader, core.Depth, self.endian, false);
+
+    //         const visuals = try allocator.alloc(core.Visual.Type, allowed_depth.visuals_len);
+    //         for (visuals) |*visual| visual.* = try deserialize(null, reader, core.Visual.Type, self.endian, false);
+    //         allowed_depth.visuals = visuals;
+    //     }
+    //     root.allowed_depths = allowed_depths;
     // }
+    // reply.roots = roots;
+    // std.debug.print("left: {d} {any}\n", .{ reader.bufferedLen(), reader.buffered() });
 
-    // var root_screen: root.Screen = undefined;
-    // for (0..reply.screen_count) |i| {
-    //     const screen = try unmarshalValue(reader, root.Screen, self.endian);
-    //     if (i == 0) root_screen = screen;
+    // for (0..reply.root_len) |i| {
+    //     const screen = try deserialize(reader, core.Screen, self.endian);
 
-    //     if (options.setup_listener) |setup_listener| if (setup_listener.screen) |f| try f(setup_listener.user_data, screen);
+    //     for (0..screen.depths_len) |_| {
+    //         const depth = try deserialize(reader, core.Depth, self.endian);
 
-    //     for (0..screen.depths_count) |_| {
-    //         const depth = try unmarshalValue(reader, root.Depth, self.endian);
-
-    //         if (options.setup_listener) |setup_listener| if (setup_listener.screenDepth) |f| try f(setup_listener.user_data, screen, depth);
-
-    //         for (0..depth.visuals_count) |_| {
-    //             const visual = try unmarshalValue(reader, root.Visual, self.endian);
-    //             if (options.setup_listener) |setup_listener| if (setup_listener.screenDepthVisual) |f| try f(setup_listener.user_data, screen, depth, visual);
+    //         for (0..depth.visuals_len) |_| {
+    //             const visual = try deserialize(reader, core.Visual, self.endian);
     //         }
     //     }
     // }
 
     // reader.tossBuffered();
 
-    const reply = try deserialize(allocator, reader, protocol.core.setup.Reply, self.endian);
-    std.debug.print("reply: {any}\n", .{reply});
+    // const reply = try deserialize(allocator, reader, protocol.core.setup.Reply, self.endian);
+    // std.debug.print("reply: {any}\n", .{reply});
 
     self.resource_id = .{
         .base = reply.resource_id_base,
@@ -203,7 +213,7 @@ pub fn writeRequest(self: *@This(), header: Request.Header, value: anytype) !Req
     const writer = &self.*.writer.interface;
     var header_writer = writer.*;
     _ = try writer.splatByte(0, @sizeOf(Request.Header));
-    try marshal(writer, value, self.endian);
+    try serialize(writer, value, self.endian);
 
     const length: Request.Header.Length = if (header.length.toWords() == 0) .fromBytes(writer.end - header_writer.end) else header.length;
     try header_writer.writeInt(u8, header.major_opcode.toInt(), self.endian);
@@ -220,7 +230,7 @@ pub fn writeRequest(self: *@This(), header: Request.Header, value: anytype) !Req
 pub fn readReply(self: *@This()) !Reply {
     const reader = &self.*.reader.interface;
 
-    const header = try deserialize(null, reader, Reply.Header, self.endian);
+    const header = try deserialize(null, reader, Reply.Header, self.endian, true);
     std.debug.assert(header.response_type == .reply);
 
     const payload = try reader.take(24 + header.length * 4);
@@ -234,36 +244,39 @@ pub fn readReply(self: *@This()) !Reply {
     return .{ .header = header, .payload = payload_reader, .sequence = header.sequence };
 }
 
-pub fn marshal(writer: *std.Io.Writer, value: anytype, endian: std.builtin.Endian) !void {
-    inline for (@typeInfo(@TypeOf(value)).@"struct".fields) |field| {
-        const field_val = @field(value, field.name);
-        switch (@typeInfo(field.type)) {
-            .pointer => |ptr| {
-                if (ptr.child == u8)
-                    try writer.writeAll(field_val)
-                else
-                    try writer.writeSliceEndian(ptr.child, field_val, endian);
-                _ = try writer.splatByte(0, (4 - (writer.end % 4)) % 4); // Padding
-            },
-            .array => |arr| if (arr.child == u8)
-                try writer.writeAll(&field_val)
+pub fn serialize(writer: *std.Io.Writer, value: anytype, endian: std.builtin.Endian) !void {
+    const Value: type = @TypeOf(value);
+    switch (@typeInfo(Value)) {
+        .bool => try writer.writeInt(u8, @intFromBool(value), endian),
+        .int => try writer.writeInt(Value, value, endian),
+        .float => |float| try writer.writeInt(@Int(.signed, float.bits), @bitCast(float), endian),
+        .pointer => |pointer| {
+            if (pointer.child == u8)
+                try writer.writeAll(value)
             else
-                try writer.writeSliceEndian(arr.child, field_val, endian),
-            .int => try writer.writeInt(field.type, field_val, endian),
-            .bool => try writer.writeInt(u8, @intFromBool(field_val), endian),
-            .@"enum" => |e| try writer.writeInt(e.tag_type, @intFromEnum(field_val), endian),
-            .@"struct" => |s| switch (s.layout) {
-                .auto => try marshal(writer, field_val, endian),
-                .@"extern" => @compileError("ill-defined memory layout"),
-                .@"packed" => try writer.writeStruct(field_val, endian),
+                try writer.writeSliceEndian(pointer.child, value, endian);
+            _ = try writer.splatByte(0, (4 - (writer.end % 4)) % 4); // Padding
+        },
+        .array => |arr| if (arr.child == u8)
+            try writer.writeAll(&value)
+        else
+            try writer.writeSliceEndian(arr.child, value, endian),
+        .@"struct" => |@"struct"| switch (@"struct".layout) {
+            .auto => inline for (std.meta.fields(Value)) |field| {
+                const field_value = @field(value, field.name);
+                try serialize(writer, field_value, endian);
             },
-            else => @compileError("can not write type of " ++ @typeName(field.type) ++ " aka " ++ @tagName(@typeInfo(field.type))),
-        }
+            .@"extern" => @compileError("preferred to not serialize structs with extern layout"),
+            .@"packed" => try writer.writeStruct(value, endian),
+        },
+        .@"enum" => |@"enum"| try writer.writeInt(@"enum".tag_type, @intFromEnum(value), endian),
+        .enum_literal => try writer.writeAll(@tagName(value)),
+        else => @compileError("can not serialize type of " ++ @typeName(Value) ++ " aka " ++ @tagName(@typeInfo(Value))),
     }
 }
 
 /// Slices require an allocator
-pub fn deserialize(opt_allocator: ?std.mem.Allocator, reader: *std.Io.Reader, Out: type, endian: std.builtin.Endian) !Out {
+pub fn deserialize(opt_allocator: ?std.mem.Allocator, reader: *std.Io.Reader, Out: type, endian: std.builtin.Endian, deserialize_slices: bool) !Out {
     return switch (@typeInfo(Out)) {
         .bool => try reader.takeByte() == 1,
         .int => try reader.takeInt(Out, endian),
@@ -276,7 +289,7 @@ pub fn deserialize(opt_allocator: ?std.mem.Allocator, reader: *std.Io.Reader, Ou
                 .bool => try reader.takeByte() == 1,
                 .int => try reader.takeInt(field.type, endian),
                 .float => std.mem.readInt(field.type, try reader.takeArray(@sizeOf(Out)), endian),
-                .pointer => |ptr| slice: {
+                .pointer => |ptr| if (deserialize_slices) slice: {
                     const element_len_name = field.name ++ "_len";
                     std.debug.assert(@typeInfo(@FieldType(Out, element_len_name)) == .int);
                     const element_len: usize = @field(out, element_len_name);
@@ -288,33 +301,36 @@ pub fn deserialize(opt_allocator: ?std.mem.Allocator, reader: *std.Io.Reader, Ou
 
                         break :slice out_slice;
                     } else {
-                        const total_bytes = element_len * @sizeOf(ptr.child);
+                        const total_bytes = element_len * getDeserializeSize(ptr.child);
+                        std.debug.print("total_bytes: {d} {s} = {d}, bytes: {any}\n", .{ total_bytes, element_len_name, element_len, reader.buffered()[0..total_bytes] });
                         const padding = (4 - (total_bytes % 4)) % 4;
-
-                        std.debug.print("padding: {s}, {d}\n", .{ element_len_name, padding });
 
                         if (opt_allocator) |allocator| {
                             const slice = try allocator.alloc(ptr.child, element_len);
 
                             for (0..element_len) |i| {
-                                slice[i] = try deserialize(allocator, reader, ptr.child, endian);
+                                const old_len = reader.seek;
+                                slice[i] = try deserialize(allocator, reader, ptr.child, endian, true);
+                                const new_len = reader.seek;
+                                std.debug.print("{s} consumed: {d}\n", .{ element_len_name, new_len - old_len });
                             }
+                            reader.toss(padding); // Padding
 
-                            reader.toss(padding);
                             break :slice slice;
                         } else {
                             for (0..element_len) |_| {
-                                _ = try deserialize(null, reader, ptr.child, endian);
+                                _ = try deserialize(null, reader, ptr.child, endian, true);
                             }
-                            reader.toss(padding);
+                            reader.toss(padding); // Padding
+
                             break :slice &.{};
                         }
                     }
-                },
+                } else &.{},
                 .array => |array| array: {
                     var val: field.type = std.mem.zeroes(field.type);
                     for (0..array.len) |i| {
-                        val[i] = try deserialize(reader, array.child, endian);
+                        val[i] = try deserialize(reader, array.child, endian, deserialize_slices);
                     }
                     break :array val;
                 },
@@ -336,12 +352,28 @@ pub fn deserialize(opt_allocator: ?std.mem.Allocator, reader: *std.Io.Reader, Ou
     };
 }
 
-pub fn freeUnmarshal(allocator: std.mem.Allocator, value: anytype) void {
+pub fn freeDeserialize(allocator: std.mem.Allocator, value: anytype) void {
     for (std.meta.fields(@TypeOf(value))) |field| {
         switch (@typeInfo(field.type)) {
             .pointer => allocator.free(@field(value, field.name)),
-            .@"struct" => freeUnmarshal(allocator, @field(value, field.name)),
+            .@"struct" => freeDeserialize(allocator, @field(value, field.name)),
             else => {},
         }
     }
+}
+
+pub fn getDeserializeSize(comptime T: type) usize {
+    var size: usize = 0;
+    switch (@typeInfo(T)) {
+        .pointer => {},
+        .array => |array| size += @sizeOf(array.child) * array.len,
+        .@"struct" => |@"struct"| switch (@"struct".layout) {
+            .auto, .@"extern" => inline for (std.meta.fields(T)) |field| {
+                size += getDeserializeSize(field.type);
+            },
+            .@"packed" => size += @"struct".backing_integer.?,
+        },
+        else => size += @sizeOf(T),
+    }
+    return size;
 }

@@ -87,17 +87,19 @@ pub const Screen = struct {
     white_pixel: u32,
     black_pixel: u32,
     current_input_masks: u32,
-    width_in_pixels: u16,
-    height_in_pixels: u16,
-    width_in_millimeters: u16,
-    height_in_millimeters: u16,
+    width: u16,
+    height: u16,
+    width_millimeters: u16,
+    height_millimeters: u16,
     min_installed_maps: u16,
     max_installed_maps: u16,
+    // pad0: u16 = 0, // TODO: add programaticaly
     root_visual: Visual.Id,
     backing_stores: u8,
     save_unders: bool,
     root_depth: u8,
     allowed_depths_len: u8,
+    // pad1: u16 = 0, // TODO: add programaticaly
     allowed_depths: []const Depth,
 };
 pub const Drawable = extern union {

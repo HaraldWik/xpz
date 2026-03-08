@@ -176,7 +176,7 @@ pub const setup = struct {
         max_keycode: u8,
         pad1: u32,
         vendor: []const u8,
-        pixmap_formats: []const core.Format,
+        pixmap_formats: []const core.Pixmap.Format,
         roots: []const core.Screen,
     };
 };
