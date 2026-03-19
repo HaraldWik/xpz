@@ -6,6 +6,6 @@ pub const Pixmap = enum(u32) {
         depth: u8,
         bits_per_pixel: u8,
         scanline_pad: u8,
-        pad0: u8,
+        pad0: [5]u8 = @splat(0),
     };
 };

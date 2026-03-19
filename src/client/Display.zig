@@ -31,7 +31,7 @@ pub fn Cookie(Reply: type) type {
                     var reply_copy = reply;
                     if (reply_copy.sequence != self.sequence) continue;
 
-                    const value = try Connection.deserialize(self.display.reply_arena.allocator(), &reply_copy.payload, Reply, self.display.connection.endian, true);
+                    const value = try Connection.unmarshal(self.display.reply_arena.allocator(), &reply_copy.payload, Reply, self.display.connection.endian, true);
                     self.reply = value;
                     self.reply_inner = reply_copy;
                     return value;

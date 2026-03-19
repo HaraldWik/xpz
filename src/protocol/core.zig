@@ -150,7 +150,7 @@ pub const setup = struct {
 
         pub const Authenticate = struct {
             status: u8,
-            length: u16,
+            reason_len: u16,
             reason: []const u8,
         };
     };

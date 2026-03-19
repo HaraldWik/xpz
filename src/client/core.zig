@@ -32,20 +32,16 @@ pub const Arc = struct {
         pie_slice = 1,
     };
 };
-pub const Format = struct {
-    depth: u8,
-    bits_per_pixel: u8,
-    scanline_pad: u8,
-};
 pub const Visual = struct {
     id: Id,
     class: Class,
     bits_per_rgb_value: u8,
+    pad0: u8 = 0,
     colormap_entries: u16,
     red_mask: u32,
     green_mask: u32,
     blue_mask: u32,
-    pad0: u32 = undefined,
+    pad1: [3]u8 = @splat(0),
 
     pub const Id = enum(u32) {
         _,
@@ -60,21 +56,12 @@ pub const Visual = struct {
         direct_color = 5,
         _,
     };
-
-    pub const Type = struct {
-        visual_id: Id,
-        class: Class,
-        bits_per_rgb_value: u8,
-        colormap_entries: u16,
-        red_mask: u32,
-        green_mask: u32,
-        blue_mask: u32,
-    };
 };
 pub const Depth = struct {
     depth: u8,
+    pad0: u8 = 0,
     visuals_len: u16,
-    visuals: []const Visual.Type,
+    visuals: []const Visual,
 };
 pub const BackingStore = enum(u8) {
     not_useful = 0,
@@ -82,7 +69,7 @@ pub const BackingStore = enum(u8) {
     always = 2,
 };
 pub const Screen = struct {
-    root: Window,
+    window: Window,
     default_colormap: Colormap,
     white_pixel: u32,
     black_pixel: u32,

@@ -124,7 +124,7 @@ pub fn close(self: *@This(), allocator: std.mem.Allocator) void {
 }
 
 pub fn flush(self: *@This()) (std.Io.net.Stream.Writer.WriteFileError || std.Io.Writer.Error)!void {
-    std.log.info("flush: bytes = {any}", .{self.writer.interface.buffered()});
+    // std.log.info("flush: bytes = {any}", .{self.writer.interface.buffered()});
     self.writer.interface.flush() catch |err| return self.writer.write_file_err orelse err;
 }
 
@@ -145,10 +145,24 @@ pub fn setup(self: *@This(), allocator: std.mem.Allocator, options: Setup) !void
         .authorization_protocol_data = options.auth.data,
     };
 
-    try serialize(writer, request, self.endian);
+    try marshal(writer, request, self.endian);
     try self.flush();
 
     try reader.fillMore();
+
+    switch (try reader.peekByte()) {
+        1 => {},
+        2 => {
+            const authenticate = try unmarshal(null, reader, protocol.core.setup.Failed.Authenticate, self.endian, true);
+            std.log.err("authenticate: {s}", .{authenticate.reason});
+            return error.Authenticate;
+        },
+        else => {
+            const failed = try unmarshal(null, reader, protocol.core.setup.Failed, self.endian, true);
+            std.log.err("{s}", .{failed.reason});
+            return error.Setup;
+        },
+    }
 
     const status: Reply.Header.ResponseType = @enumFromInt(try reader.peekInt(u8, self.endian));
     if (status != .reply) {
@@ -156,51 +170,11 @@ pub fn setup(self: *@This(), allocator: std.mem.Allocator, options: Setup) !void
         return error.SetupReply;
     }
 
-    var reply: protocol.core.setup.Reply = try deserialize(allocator, reader, protocol.core.setup.Reply, self.endian, true);
+    var reply: protocol.core.setup.Reply = try unmarshal(allocator, reader, protocol.core.setup.Reply, self.endian, true);
     std.debug.assert(options.protocol_major_version <= reply.protocol_major_version);
     std.debug.assert(options.protocol_minor_version <= reply.protocol_minor_version);
 
-    // const vendor = try allocator.alloc(u8, reply.vendor_len);
-    // @memcpy(vendor, std.mem.trimEnd(u8, try reader.take(reply.vendor_len), &.{0}));
-    // reply.vendor = vendor;
-
-    // const pixmap_formats = try allocator.alloc(core.Pixmap.Format, reply.pixmap_formats_len);
-    // for (pixmap_formats) |*pixmap_format| pixmap_format.* = try deserialize(null, reader, core.Pixmap.Format, self.endian, false);
-    // reply.pixmap_formats = pixmap_formats;
-
-    // const roots = try allocator.alloc(core.Screen, reply.roots_len);
-    // for (roots) |*root| {
-    //     root.* = try deserialize(null, reader, core.Screen, self.endian, false);
-
-    //     const allowed_depths = try allocator.alloc(core.Depth, root.allowed_depths_len);
-    //     for (allowed_depths) |*allowed_depth| {
-    //         allowed_depth.* = try deserialize(null, reader, core.Depth, self.endian, false);
-
-    //         const visuals = try allocator.alloc(core.Visual.Type, allowed_depth.visuals_len);
-    //         for (visuals) |*visual| visual.* = try deserialize(null, reader, core.Visual.Type, self.endian, false);
-    //         allowed_depth.visuals = visuals;
-    //     }
-    //     root.allowed_depths = allowed_depths;
-    // }
-    // reply.roots = roots;
-    // std.debug.print("left: {d} {any}\n", .{ reader.bufferedLen(), reader.buffered() });
-
-    // for (0..reply.root_len) |i| {
-    //     const screen = try deserialize(reader, core.Screen, self.endian);
-
-    //     for (0..screen.depths_len) |_| {
-    //         const depth = try deserialize(reader, core.Depth, self.endian);
-
-    //         for (0..depth.visuals_len) |_| {
-    //             const visual = try deserialize(reader, core.Visual, self.endian);
-    //         }
-    //     }
-    // }
-
-    // reader.tossBuffered();
-
-    // const reply = try deserialize(allocator, reader, protocol.core.setup.Reply, self.endian);
-    // std.debug.print("reply: {any}\n", .{reply});
+    reader.tossBuffered();
 
     self.resource_id = .{
         .base = reply.resource_id_base,
@@ -213,7 +187,7 @@ pub fn writeRequest(self: *@This(), header: Request.Header, value: anytype) !Req
     const writer = &self.*.writer.interface;
     var header_writer = writer.*;
     _ = try writer.splatByte(0, @sizeOf(Request.Header));
-    try serialize(writer, value, self.endian);
+    try marshal(writer, value, self.endian);
 
     const length: Request.Header.Length = if (header.length.toWords() == 0) .fromBytes(writer.end - header_writer.end) else header.length;
     try header_writer.writeInt(u8, header.major_opcode.toInt(), self.endian);
@@ -229,22 +203,24 @@ pub fn writeRequest(self: *@This(), header: Request.Header, value: anytype) !Req
 
 pub fn readReply(self: *@This()) !Reply {
     const reader = &self.*.reader.interface;
+    const buf = reader.buffered();
+    const header = try unmarshal(null, reader, Reply.Header, self.endian, true);
+    std.log.debug("buf: {d} {any}", .{ buf.len, buf });
+    std.log.debug("reply header: {any}", .{header});
+    // std.debug.assert(header.response_type == .reply);
 
-    const header = try deserialize(null, reader, Reply.Header, self.endian, true);
-    std.debug.assert(header.response_type == .reply);
-
-    const payload = try reader.take(24 + header.length * 4);
+    const payload = try reader.take(24 +| header.length *| 4);
     const payload_reader: std.Io.Reader = .fixed(payload);
 
     while (reader.bufferedLen() >= 4 and try reader.peekInt(u32, self.endian) == 0)
         reader.toss(4);
 
-    // std.log.info("reply\n\theader: {any}\n\tpayload: {any}\n\tleft over: {any}", .{ header, payload, reader.buffered() });
+    std.log.info("reply\n\theader: {any}\n\tpayload: {any}\n\tleft over: {any}", .{ header, payload, reader.buffered() });
 
     return .{ .header = header, .payload = payload_reader, .sequence = header.sequence };
 }
 
-pub fn serialize(writer: *std.Io.Writer, value: anytype, endian: std.builtin.Endian) !void {
+pub fn marshal(writer: *std.Io.Writer, value: anytype, endian: std.builtin.Endian) !void {
     const Value: type = @TypeOf(value);
     switch (@typeInfo(Value)) {
         .bool => try writer.writeInt(u8, @intFromBool(value), endian),
@@ -264,7 +240,7 @@ pub fn serialize(writer: *std.Io.Writer, value: anytype, endian: std.builtin.End
         .@"struct" => |@"struct"| switch (@"struct".layout) {
             .auto => inline for (std.meta.fields(Value)) |field| {
                 const field_value = @field(value, field.name);
-                try serialize(writer, field_value, endian);
+                try marshal(writer, field_value, endian);
             },
             .@"extern" => @compileError("preferred to not serialize structs with extern layout"),
             .@"packed" => try writer.writeStruct(value, endian),
@@ -276,7 +252,7 @@ pub fn serialize(writer: *std.Io.Writer, value: anytype, endian: std.builtin.End
 }
 
 /// Slices require an allocator
-pub fn deserialize(opt_allocator: ?std.mem.Allocator, reader: *std.Io.Reader, Out: type, endian: std.builtin.Endian, deserialize_slices: bool) !Out {
+pub fn unmarshal(opt_allocator: ?std.mem.Allocator, reader: *std.Io.Reader, Out: type, endian: std.builtin.Endian, deserialize_slices: bool) !Out {
     return switch (@typeInfo(Out)) {
         .bool => try reader.takeByte() == 1,
         .int => try reader.takeInt(Out, endian),
@@ -295,31 +271,26 @@ pub fn deserialize(opt_allocator: ?std.mem.Allocator, reader: *std.Io.Reader, Ou
                     const element_len: usize = @field(out, element_len_name);
                     if (ptr.child == u8) {
                         const slice = try reader.take(element_len);
-                        const out_slice = if (opt_allocator) |allocator| try allocator.dupe(u8, slice) else slice;
-
                         reader.toss((4 - (slice.len % 4)) % 4);
-
-                        break :slice out_slice;
+                        break :slice if (opt_allocator) |allocator| try allocator.dupe(u8, slice) else slice;
                     } else {
+                        // std.debug.print("20 bytes pre {any}\t", .{reader.buffer[reader.seek - 10 .. reader.seek]});
                         const total_bytes = element_len * getDeserializeSize(ptr.child);
-                        std.debug.print("total_bytes: {d} {s} = {d}, bytes: {any}\n", .{ total_bytes, element_len_name, element_len, reader.buffered()[0..total_bytes] });
+                        // std.debug.print("total_bytes: {d} {s} = {d}, bytes: {any}\n", .{ total_bytes, element_len_name, element_len, reader.buffered()[0..total_bytes] });
                         const padding = (4 - (total_bytes % 4)) % 4;
 
                         if (opt_allocator) |allocator| {
                             const slice = try allocator.alloc(ptr.child, element_len);
 
                             for (0..element_len) |i| {
-                                const old_len = reader.seek;
-                                slice[i] = try deserialize(allocator, reader, ptr.child, endian, true);
-                                const new_len = reader.seek;
-                                std.debug.print("{s} consumed: {d}\n", .{ element_len_name, new_len - old_len });
+                                slice[i] = try unmarshal(allocator, reader, ptr.child, endian, true);
                             }
                             reader.toss(padding); // Padding
 
                             break :slice slice;
                         } else {
                             for (0..element_len) |_| {
-                                _ = try deserialize(null, reader, ptr.child, endian, true);
+                                _ = try unmarshal(null, reader, ptr.child, endian, true);
                             }
                             reader.toss(padding); // Padding
 
@@ -327,10 +298,10 @@ pub fn deserialize(opt_allocator: ?std.mem.Allocator, reader: *std.Io.Reader, Ou
                         }
                     }
                 } else &.{},
-                .array => |array| array: {
+                .array => |array| if (array.child == u8) (try reader.takeArray(array.len)).* else array: {
                     var val: field.type = std.mem.zeroes(field.type);
                     for (0..array.len) |i| {
-                        val[i] = try deserialize(reader, array.child, endian, deserialize_slices);
+                        val[i] = try unmarshal(reader, array.child, endian, deserialize_slices, false);
                     }
                     break :array val;
                 },
@@ -341,7 +312,7 @@ pub fn deserialize(opt_allocator: ?std.mem.Allocator, reader: *std.Io.Reader, Ou
                     };
                 },
                 .@"struct" => |s| switch (s.layout) {
-                    .auto, .@"extern" => try deserialize(reader, field.type, endian),
+                    .auto, .@"extern" => try unmarshal(reader, field.type, endian),
                     .@"packed" => try reader.takeStruct(field.type, endian),
                 },
                 else => @compileError("can not read type of " ++ @typeName(field.type) ++ " aka " ++ @tagName(@typeInfo(field.type))),
@@ -376,4 +347,33 @@ pub fn getDeserializeSize(comptime T: type) usize {
         else => size += @sizeOf(T),
     }
     return size;
+}
+
+fn getFieldPostPadding(comptime T: type, comptime field_name: []const u8) usize {
+    const fields = @typeInfo(T).Struct.fields;
+
+    // Find the index of the requested field
+    var field_index: usize = undefined;
+    for (fields, 0..) |field, i| {
+        if (std.mem.eql(u8, field.name, field_name)) {
+            field_index = i;
+            break;
+        }
+    } else {
+        @compileError("Field '" ++ field_name ++ "' not found in struct");
+    }
+
+    // If this is the last field, padding is to align the struct itself
+    if (field_index == fields.len - 1) {
+        const struct_size = @sizeOf(T);
+        const struct_alignment = @alignOf(T);
+        return (struct_alignment - (struct_size % struct_alignment)) % struct_alignment;
+    }
+
+    // Otherwise, padding is the difference to the next field's offset
+    const current_field_offset = @offsetOf(T, field_name);
+    const current_field_size = @sizeOf(fields[field_index].type);
+    const next_field_offset = @offsetOf(T, fields[field_index + 1].name);
+
+    return next_field_offset - (current_field_offset + current_field_size);
 }
