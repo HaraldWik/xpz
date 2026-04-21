@@ -2,7 +2,7 @@
     .name = .xpz,
     .version = "0.0.0",
     .fingerprint = 0x3a4c012ec235aefd,
-    .minimum_zig_version = "0.16.0-dev.2040+c475f1fcd",
+    .minimum_zig_version = "0.16.0",
     .dependencies = .{},
     .paths = .{
         "build.zig",

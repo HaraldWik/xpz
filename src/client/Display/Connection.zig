@@ -170,7 +170,7 @@ pub fn setup(self: *@This(), allocator: std.mem.Allocator, options: Setup) !void
         return error.SetupReply;
     }
 
-    var reply: protocol.core.setup.Reply = try unmarshal(allocator, reader, protocol.core.setup.Reply, self.endian, true);
+    const reply: protocol.core.setup.Reply = try unmarshal(allocator, reader, protocol.core.setup.Reply, self.endian, true);
     std.debug.assert(options.protocol_major_version <= reply.protocol_major_version);
     std.debug.assert(options.protocol_minor_version <= reply.protocol_minor_version);
 
@@ -221,10 +221,10 @@ pub fn readReply(self: *@This()) !Reply {
 }
 
 pub fn marshal(writer: *std.Io.Writer, value: anytype, endian: std.builtin.Endian) !void {
-    const Value: type = @TypeOf(value);
-    switch (@typeInfo(Value)) {
+    const T: type = @TypeOf(value);
+    switch (@typeInfo(T)) {
         .bool => try writer.writeInt(u8, @intFromBool(value), endian),
-        .int => try writer.writeInt(Value, value, endian),
+        .int => try writer.writeInt(T, value, endian),
         .float => |float| try writer.writeInt(@Int(.signed, float.bits), @bitCast(float), endian),
         .pointer => |pointer| {
             if (pointer.child == u8)
@@ -238,7 +238,7 @@ pub fn marshal(writer: *std.Io.Writer, value: anytype, endian: std.builtin.Endia
         else
             try writer.writeSliceEndian(arr.child, value, endian),
         .@"struct" => |@"struct"| switch (@"struct".layout) {
-            .auto => inline for (std.meta.fields(Value)) |field| {
+            .auto => inline for (std.meta.fields(T)) |field| {
                 const field_value = @field(value, field.name);
                 try marshal(writer, field_value, endian);
             },
@@ -247,7 +247,7 @@ pub fn marshal(writer: *std.Io.Writer, value: anytype, endian: std.builtin.Endia
         },
         .@"enum" => |@"enum"| try writer.writeInt(@"enum".tag_type, @intFromEnum(value), endian),
         .enum_literal => try writer.writeAll(@tagName(value)),
-        else => @compileError("can not serialize type of " ++ @typeName(Value) ++ " aka " ++ @tagName(@typeInfo(Value))),
+        else => @compileError("can not serialize type of " ++ @typeName(T) ++ " aka " ++ @tagName(@typeInfo(T))),
     }
 }
 
@@ -305,11 +305,9 @@ pub fn unmarshal(opt_allocator: ?std.mem.Allocator, reader: *std.Io.Reader, Out:
                     }
                     break :array val;
                 },
-                .@"enum" => e: {
-                    break :e reader.takeEnum(field.type, endian) catch |err| {
-                        std.log.err("{s} {s} {s}", .{ @errorName(err), @typeName(Out), field.name });
-                        return err;
-                    };
+                .@"enum" => reader.takeEnum(field.type, endian) catch |err| {
+                    std.log.err("{s} {s} {s}", .{ @errorName(err), @typeName(Out), field.name });
+                    return err;
                 },
                 .@"struct" => |s| switch (s.layout) {
                     .auto, .@"extern" => try unmarshal(reader, field.type, endian),
